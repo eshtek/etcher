@@ -77,6 +77,13 @@ const config: ForgeConfig = {
 		new MakerSquirrel({
 			setupIcon: 'assets/icon.ico',
 			loadingGif: 'assets/icon.png',
+			// Programs and Features reads this one, and electron-winstaller
+			// defaults it to Electron's own icon — which is why the entry
+			// showed a stray Electron logo. It has to be a URL rather than a
+			// path, so it points at the icon in this repo; tracking the branch
+			// means updating assets/icon.ico is enough to update it.
+			iconUrl:
+				'https://raw.githubusercontent.com/eshtek/etcher/feature/hexos-imager/assets/icon.ico',
 			...winSigningConfig,
 		}),
 		new MakerDMG({
