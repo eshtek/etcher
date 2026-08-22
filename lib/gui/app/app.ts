@@ -125,6 +125,22 @@ export let requestMetadata: any;
 /** How long to wait for the sidecar to return image metadata. */
 const SOURCE_METADATA_TIMEOUT_MS = 120000;
 
+/**
+ * Ask the sidecar to download and verify an image.
+ *
+ * The download runs there rather than here because Node's event loop in a
+ * renderer is multiplexed with Chromium's, which cost about two thirds of the
+ * available throughput. Progress arrives as `downloadProgress` messages.
+ */
+export let requestImageDownload:
+	| ((
+			entry: unknown,
+			destPath: string,
+			onProgress: (progress: any) => void,
+			abortSignal?: AbortSignal,
+	  ) => Promise<{ path: string; alreadyExisted: boolean }>)
+	| undefined;
+
 // start the api and spawn the child process
 spawnChildAndConnect({
 	withPrivileges: false,
@@ -193,6 +209,38 @@ spawnChildAndConnect({
 					settle();
 					resolve(JSON.parse(data));
 				});
+			});
+		};
+
+		requestImageDownload = async (entry, destPath, onProgress, abortSignal) => {
+			return new Promise((resolve, reject) => {
+				const onAbort = () => emit('cancelDownload', {});
+				const settle = () => {
+					abortSignal?.removeEventListener('abort', onAbort);
+					registerHandler('downloadProgress', () => undefined);
+					registerHandler('downloadDone', () => undefined);
+					registerHandler('downloadError', () => undefined);
+				};
+
+				registerHandler('downloadProgress', (data: any) => {
+					onProgress(JSON.parse(data));
+				});
+				registerHandler('downloadDone', (data: any) => {
+					settle();
+					resolve(JSON.parse(data));
+				});
+				registerHandler('downloadError', (data: any) => {
+					settle();
+					const { name, message } = JSON.parse(data);
+					const error = new Error(message);
+					// Preserve the distinction the caller acts on: a checksum
+					// mismatch is a bad publish and must not be retried.
+					error.name = name ?? 'Error';
+					reject(error);
+				});
+
+				abortSignal?.addEventListener('abort', onAbort, { once: true });
+				emit('downloadImage', JSON.stringify({ entry, destPath }));
 			});
 		};
 

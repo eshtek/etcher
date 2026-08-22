@@ -26,6 +26,7 @@ import type { WriteOptions } from './types/types';
 import { write, cleanup } from './child-writer';
 import { startScanning, getCurrentDrives } from './scanner';
 import { getSourceMetadata } from './source-metadata';
+import { ensureImageAt } from '../shared/hexos-image-core';
 import type { DrivelistDrive } from '../shared/drive-constraints';
 import type { SourceMetadata } from '../shared/typings/source-selector';
 
@@ -214,6 +215,48 @@ function setup(): Promise<EmitLog> {
 				}
 			};
 
+			/**
+			 * @summary Download and verify a HexOS image on behalf of the client
+			 *
+			 * This runs here rather than in the renderer because Node's event
+			 * loop is multiplexed with Chromium's there, and interleaving every
+			 * socket read with the compositor cost roughly two thirds of the
+			 * available throughput: 15 MB/s in the renderer against 44 MB/s for
+			 * curl on the same machine. The same code in a plain Node process
+			 * matches curl within noise.
+			 */
+			let downloadAbort: AbortController | undefined;
+
+			const onDownloadImage = async (params: any) => {
+				const { entry, destPath } = JSON.parse(params);
+				log(`downloading ${entry?.name} to ${destPath}`);
+				downloadAbort = new AbortController();
+				try {
+					const result = await ensureImageAt(
+						entry,
+						destPath,
+						(progress) => emit('downloadProgress', JSON.stringify(progress)),
+						downloadAbort.signal,
+					);
+					log(`download complete (existing copy: ${result.alreadyExisted})`);
+					emit('downloadDone', JSON.stringify(result));
+				} catch (error: any) {
+					log(`download failed: ${error?.message ?? error}`);
+					// The class identity does not survive the wire, so send the
+					// name too: the client rebuilds ChecksumMismatchError from it
+					// to keep its "bad publish, don't retry" handling.
+					emit(
+						'downloadError',
+						JSON.stringify({
+							name: error?.name,
+							message: error?.message ?? String(error),
+						}),
+					);
+				} finally {
+					downloadAbort = undefined;
+				}
+			};
+
 			// handle uncaught exceptions
 			process.once('uncaughtException', handleError);
 
@@ -273,6 +316,15 @@ function setup(): Promise<EmitLog> {
 
 				// route `sourceMetadata` from client
 				sourceMetadata: async (params: any) => onSourceMetadata(params),
+
+				// route `downloadImage` from client
+				downloadImage: async (params: any) => onDownloadImage(params),
+
+				// abort an in-flight download
+				cancelDownload: () => {
+					log('download cancellation requested');
+					downloadAbort?.abort();
+				},
 			};
 
 			// message handler, parse and route messages coming on WS

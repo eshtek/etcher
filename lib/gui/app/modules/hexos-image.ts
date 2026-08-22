@@ -28,13 +28,17 @@
  *   ]
  * }
  *
- * All network/hash logic lives in hexos-image-core.ts (pure Node); this
- * module only resolves URLs from settings and the destination path from
- * Electron's downloads directory.
+ * All network/hash logic lives in shared/hexos-image-core.ts (pure Node) and
+ * runs in the sidecar process; this module only resolves URLs from settings
+ * and the destination path from Electron's downloads directory, then hands
+ * the work over the sidecar's WebSocket.
  */
 
 import { join } from 'path';
 import * as semver from 'semver';
+
+import { requestImageDownload } from '../app';
+import { ChecksumMismatchError } from '../../../shared/hexos-image-core';
 
 import { version as appVersion } from '../../../../package.json';
 import * as settings from '../models/settings';
@@ -42,16 +46,16 @@ import type {
 	HexOSImageEntry,
 	HexOSManifest,
 	ProgressCallback,
-} from './hexos-image-core';
-import { ensureImageAt, fetchManifestFrom } from './hexos-image-core';
+} from '../../../shared/hexos-image-core';
+import { fetchManifestFrom } from '../../../shared/hexos-image-core';
 
 export type {
 	DownloadProgress,
 	HexOSImageEntry,
 	HexOSManifest,
 	ProgressCallback,
-} from './hexos-image-core';
-export { ChecksumMismatchError, getLatestImage } from './hexos-image-core';
+} from '../../../shared/hexos-image-core';
+export { ChecksumMismatchError, getLatestImage } from '../../../shared/hexos-image-core';
 
 /**
  * Short on purpose: this is the budget before falling back to the static
@@ -131,15 +135,36 @@ export function getDestinationPath(entry: HexOSImageEntry): string {
 	return join(downloadsDir, entry.name);
 }
 
+/**
+ * Download and verify the image, in the sidecar rather than here.
+ *
+ * A renderer's Node event loop is multiplexed with Chromium's, and running
+ * the transfer here measured about a third of what the same code achieves in
+ * a plain Node process (15 MB/s against 44 MB/s for curl on the same machine).
+ */
 export async function ensureImage(
 	entry: HexOSImageEntry,
 	onProgress: ProgressCallback,
 	abortSignal?: AbortSignal,
 ): Promise<{ path: string; alreadyExisted: boolean }> {
-	return await ensureImageAt(
-		entry,
-		getDestinationPath(entry),
-		onProgress,
-		abortSignal,
-	);
+	if (requestImageDownload === undefined) {
+		throw new Error(
+			'The download helper is not ready yet; please try again in a moment.',
+		);
+	}
+	try {
+		return await requestImageDownload(
+			entry,
+			getDestinationPath(entry),
+			onProgress as (progress: any) => void,
+			abortSignal,
+		);
+	} catch (error: any) {
+		// The class does not survive the wire; rebuild it so callers can keep
+		// telling a bad publish apart from a flaky transfer.
+		if (error?.name === 'ChecksumMismatchError') {
+			throw new ChecksumMismatchError(entry.sha256, '(reported by helper)');
+		}
+		throw error;
+	}
 }
