@@ -196,14 +196,20 @@ function setup(): Promise<EmitLog> {
 			const onSourceMetadata = async (params: any) => {
 				log('sourceMetadata requested');
 				const { selected, SourceType, auth } = JSON.parse(params);
+				// Breadcrumbs over the client's log channel: when this stalls
+				// there is otherwise nothing to say where, since a hang emits
+				// neither sourceMetadata nor fail.
+				emitLog(`reading metadata for ${SourceType}`);
 				try {
 					const sourceMatadata = await getSourceMetadata(
 						selected,
 						SourceType,
 						auth,
 					);
+					emitLog('metadata read, replying');
 					emitSourceMetadata(sourceMatadata);
 				} catch (error: any) {
+					emitLog(`metadata read failed: ${error?.message ?? error}`);
 					emitFail(error);
 				}
 			};

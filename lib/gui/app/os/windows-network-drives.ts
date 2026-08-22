@@ -92,6 +92,33 @@ async function getWindowsNetworkDrives(
 }
 
 /**
+ * wmic exists here purely as a convenience: it maps `Z:\\path` back to
+ * `\\\\server\\share\\path` so a file on a mapped drive can still be read. It is
+ * also deprecated, absent from newer Windows builds, and a WMI query can block
+ * for a very long time when the repository is unhealthy or a mapped share is
+ * unreachable.
+ *
+ * Nothing downstream needs this for an ordinary local path, so cap it and fall
+ * back to the path as given. Without the cap a slow WMI query stalls image
+ * loading entirely: the caller only guards against errors, and a hang is not
+ * an error.
+ */
+const NETWORK_DRIVE_LOOKUP_TIMEOUT_MS = 5000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
+	return Promise.race([
+		promise.finally(() => clearTimeout(timer)),
+		new Promise<T>((_resolve, reject) => {
+			timer = setTimeout(
+				() => reject(new Error(`${what} timed out after ${ms}ms`)),
+				ms,
+			);
+		}),
+	]);
+}
+
+/**
  * @summary Replaces network drive letter with network drive location in the provided filePath on Windows
  */
 export async function replaceWindowsNetworkDriveLetter(
@@ -104,7 +131,11 @@ export async function replaceWindowsNetworkDriveLetter(
 		const matches = /^([A-Z]+:)\\(.*)$/.exec(filePath);
 		if (matches !== null) {
 			const [, drive, relativePath] = matches;
-			const drives = await getWindowsNetworkDrives(getWmicOutput);
+			const drives = await withTimeout(
+				getWindowsNetworkDrives(getWmicOutput),
+				NETWORK_DRIVE_LOOKUP_TIMEOUT_MS,
+				'network drive lookup',
+			);
 			const location = drives.get(drive);
 			if (location !== undefined) {
 				result = `${location}\\${relativePath}`;
