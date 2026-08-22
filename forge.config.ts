@@ -27,9 +27,20 @@ if (process.env.NODE_ENV === 'production') {
 		teamId: process.env.XCODE_APP_LOADER_TEAM_ID,
 	};
 
-	winSigningConfig = {
-		signWithParams: `-sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} -tr ${process.env.TIMESTAMP_SERVER} -td sha256 -fd sha256 -d hexos-imager`,
-	};
+	// Azure Artifact Signing: the key never leaves Microsoft's HSM, so signtool
+	// is driven through the Azure dlib rather than a local certificate. Every
+	// path handed to signtool must be free of spaces or it fails opaquely.
+	// Keep /v /debug so timestamping warnings actually surface in the log.
+	if (process.platform === 'win32') {
+		winSigningConfig = {
+			windowsSign: {
+				signToolPath: process.env.SIGNTOOL_PATH,
+				signWithParams: `/v /debug /dlib ${process.env.AZURE_CODE_SIGNING_DLIB} /dmdf ${process.env.AZURE_METADATA_JSON}`,
+				timestampServer: 'http://timestamp.acs.microsoft.com',
+				hashes: ['sha256'],
+			},
+		};
+	}
 }
 
 const config: ForgeConfig = {
@@ -54,6 +65,9 @@ const config: ForgeConfig = {
 			}),
 		},
 		...osxSigningConfig,
+		// Signs the packaged .exe. MakerSquirrel signs the installer separately;
+		// both are needed or the app inside a signed installer stays unsigned.
+		...winSigningConfig,
 	},
 	rebuildConfig: {
 		onlyModules: [], // prevent rebuilding *any* native modules as they won't be used by electron but by the sidecar

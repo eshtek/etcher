@@ -1,0 +1,206 @@
+name: Release
+
+# Signed release builds. Unsigned CI builds live in build-windows.yml.
+#
+# Signing credentials are never stored: the Windows job authenticates to Azure
+# Artifact Signing over OIDC via the `release` environment, whose federated
+# credential subject is `repo:eshtek/etcher:environment:release`. This repo is
+# public, so the signing jobs must stay unreachable from pull_request triggers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: Publish the GitHub release as a draft
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 20.x
+  # Pin the Artifact Signing client. Verify the current version on nuget.org
+  # before the first real release; the package kept its Trusted Signing name
+  # through the 2026 rename.
+  SIGNING_CLIENT_VERSION: '1.0.60'
+
+jobs:
+  windows:
+    name: Windows x64 (signed)
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      id-token: write # required for the OIDC token exchange with Entra
+      contents: read
+    steps:
+      - name: Enable long paths in git
+        run: git config --global core.longpaths true
+
+      - uses: actions/checkout@v4
+
+      # The sidecar (etcher-util) embeds Node 20 via pkg; native modules
+      # must be compiled against the same major version or the sidecar
+      # segfaults on startup.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Azure login (OIDC — no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: nuget/setup-nuget@v2
+
+      # signtool and the signing dlib must sit at paths with no spaces in them.
+      # signtool ships under "C:\Program Files (x86)\Windows Kits\..." and fails
+      # with an unhelpful error if handed to forge from there, so stage a copy.
+      - name: Stage signing toolchain
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\signing | Out-Null
+
+          nuget install Microsoft.Trusted.Signing.Client `
+            -Version $env:SIGNING_CLIENT_VERSION `
+            -OutputDirectory C:\signing `
+            -ExcludeVersion
+
+          $sdkSigntool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $sdkSigntool) { throw 'signtool.exe not found in the Windows SDK' }
+
+          # Copy the whole directory: signtool depends on sibling DLLs.
+          New-Item -ItemType Directory -Force -Path C:\signing\signtool | Out-Null
+          Copy-Item "$($sdkSigntool.Directory)\*" C:\signing\signtool\ -Recurse -Force
+
+          @{
+            Endpoint               = 'https://wus2.codesigning.azure.net/'
+            CodeSigningAccountName = 'eshtek-signing'
+            CertificateProfileName = '${{ vars.AZURE_CERT_PROFILE_NAME }}'
+            CorrelationId          = ''
+          } | ConvertTo-Json | Set-Content -Path C:\signing\metadata.json -Encoding utf8
+
+          Get-Content C:\signing\metadata.json
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: x64
+
+      - name: Build signed distributables
+        run: npm run make
+        env:
+          NODE_ENV: production # forge.config.ts gates signing on this
+          AZURE_CODE_SIGNING_DLIB: C:\signing\Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll
+          AZURE_METADATA_JSON: C:\signing\metadata.json
+          SIGNTOOL_PATH: C:\signing\signtool\signtool.exe
+
+      - name: Verify signatures
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse out\make -Include *.exe | ForEach-Object {
+            Write-Host "=== $($_.FullName) ==="
+            & C:\signing\signtool\signtool.exe verify /pa /v $_.FullName
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { throw 'One or more artifacts failed signature verification' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hexos-imager-windows-x64
+          path: |
+            out/make/**/*.exe
+            out/make/**/*.nupkg
+            out/make/**/RELEASES
+          if-no-files-found: error
+          retention-days: 14
+
+      # Surfaces timestamping warnings that signtool swallows.
+      - name: Upload signing log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-signing-log
+          path: electron-windows-sign.log
+          if-no-files-found: ignore
+
+  macos:
+    name: macOS ${{ matrix.arch }} (signed)
+    # Inert until the Apple Developer Program enrollment for Eshtek Inc.
+    # completes and the Developer ID cert is in repo secrets. Flip the repo
+    # variable APPLE_SIGNING_ENABLED to 'true' to arm these jobs.
+    if: vars.APPLE_SIGNING_ENABLED == 'true'
+    runs-on: macos-14
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # Certs created in Xcode are machine-bound; CI needs the exported .p12
+      # from 1Password, base64-encoded into APPLE_DEVELOPER_ID_P12.
+      - name: Import Developer ID certificate
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN=$RUNNER_TEMP/signing.keychain-db
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: ${{ matrix.arch }}
+
+      - name: Build, sign and notarize
+        run: npm run make -- --arch=${{ matrix.arch }}
+        env:
+          NODE_ENV: production
+          XCODE_APP_LOADER_EMAIL: ${{ secrets.XCODE_APP_LOADER_EMAIL }}
+          XCODE_APP_LOADER_PASSWORD: ${{ secrets.XCODE_APP_LOADER_PASSWORD }}
+          XCODE_APP_LOADER_TEAM_ID: ${{ secrets.XCODE_APP_LOADER_TEAM_ID }}
+
+      - name: Verify notarization
+        run: |
+          APP=$(find out -name 'HexOS Imager.app' -maxdepth 4 | head -1)
+          codesign -dv --verbose=2 "$APP"
+          spctl -a -vv "$APP"
+          find out/make -name '*.dmg' -exec xcrun stapler validate {} \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hexos-imager-macos-${{ matrix.arch }}
+          path: out/make/**/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

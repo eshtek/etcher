@@ -121,3 +121,6 @@ secrets/WINDOWS_SIGNING.pfx
 #local development
 .yalc
 yalc.lock
+
+# Azure Artifact Signing credentials for local Windows builds
+.env.trustedsigning

@@ -1,0 +1,55 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/hexos-imager
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+jobs:
+  build:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - name: Enable long paths in git
+        run: git config --global core.longpaths true
+
+      - uses: actions/checkout@v4
+
+      # The sidecar (etcher-util) embeds Node 20 via pkg; native modules
+      # must be compiled against the same major version or the sidecar
+      # segfaults on startup.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: x64
+
+      - name: Build distributables (Squirrel installer + zip)
+        run: npm run make
+        # NODE_ENV is deliberately not 'production': forge.config.ts gates
+        # code signing on it, and no Windows signing identity exists yet.
+        # When Azure Trusted Signing lands, set NODE_ENV=production here
+        # and provide the signing env vars as repository secrets.
+
+      - name: List artifacts
+        run: Get-ChildItem -Recurse out/make | Select-Object FullName
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hexos-imager-windows-x64
+          path: |
+            out/make/**/*.exe
+            out/make/**/*.nupkg
+            out/make/**/*.zip
+            out/make/**/RELEASES
+          if-no-files-found: error
+          retention-days: 14
