@@ -115,7 +115,13 @@ jobs:
           $targets = @()
           $targets += Get-ChildItem -Path out\make -Recurse -Include *.exe -File
           Get-ChildItem -Path out -Directory -Filter '*-win32-*' | ForEach-Object {
-            $targets += Get-ChildItem -Path $_.FullName -Filter '*.exe' -File
+            # Squirrel.exe is a build-time helper that electron-forge drops into
+            # the staging directory after the packager's signing pass, so it is
+            # unsigned here and always will be. It is not shipped from this
+            # directory — the copy users get lives inside the nupkg and is
+            # signed by MakerSquirrel.
+            $targets += Get-ChildItem -Path $_.FullName -Filter '*.exe' -File |
+              Where-Object { $_.Name -ne 'Squirrel.exe' }
           }
           if ($targets.Count -lt 2) {
             throw "expected the installer and the packaged app, found $($targets.Count)"
@@ -129,6 +135,27 @@ jobs:
           if ($failed.Count -gt 0) {
             throw "signature verification failed for: $($failed -join '; ')"
           }
+
+          # The nupkg is the payload Squirrel actually installs, so verify its
+          # contents rather than trusting the staging directory. This is also
+          # what covers the Squirrel.exe skipped above.
+          $nupkg = Get-ChildItem -Path out\make -Recurse -Filter *.nupkg -File | Select-Object -First 1
+          if (-not $nupkg) { throw 'no .nupkg produced' }
+          $expanded = Join-Path $env:RUNNER_TEMP 'nupkg'
+          Expand-Archive -Path $nupkg.FullName -DestinationPath $expanded -Force
+
+          $shipped = Get-ChildItem -Path $expanded -Recurse -File |
+            Where-Object { $_.Extension -in '.exe', '.dll', '.node' }
+          Write-Host "verifying $($shipped.Count) binaries inside $($nupkg.Name)"
+          $failedShipped = @()
+          foreach ($f in $shipped) {
+            & C:\signing\signtool\signtool.exe verify /pa /q $f.FullName
+            if ($LASTEXITCODE -ne 0) { $failedShipped += $f.FullName.Replace($expanded, '') }
+          }
+          if ($failedShipped.Count -gt 0) {
+            throw "unsigned binaries inside the nupkg: $($failedShipped -join '; ')"
+          }
+          Write-Host 'every shipped binary is signed'
 
       # Packaging succeeding does not mean the app starts: the pkg sidecar
       # embeds its own Node and segfaults on startup if native modules were
