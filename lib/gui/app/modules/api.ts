@@ -13,7 +13,7 @@
  */
 
 import WebSocket from 'ws'; // (no types for wrapper, this is expected)
-import { spawn, exec } from 'child_process';
+import { spawn } from 'child_process';
 import * as os from 'os';
 import * as packageJSON from '../../../../package.json';
 import * as permissions from '../../../shared/permissions';
@@ -49,7 +49,13 @@ async function spawnChild(
 	etcherServerPort: string,
 ) {
 	const argv = await writerArgv();
+	// Spread the parent environment first so our values win. Windows used to
+	// be handed only the five variables below: no PATH, no SystemRoot, no
+	// TEMP. The sidecar starts under that environment and then cannot open
+	// its socket, so it sits there running while the app fails to connect and
+	// gives up, leaving requestMetadata undefined.
 	const env: any = {
+		...process.env,
 		ETCHER_SERVER_ADDRESS: etcherServerAddress,
 		ETCHER_SERVER_ID: etcherServerId,
 		ETCHER_SERVER_PORT: etcherServerPort,
@@ -58,7 +64,6 @@ async function spawnChild(
 		// desktop integration script from presenting the
 		// "installation" dialog
 		SKIP: '1',
-		...(process.platform === 'win32' ? {} : process.env),
 	};
 
 	if (withPrivileges) {
@@ -68,16 +73,6 @@ async function spawnChild(
 			env,
 		});
 	} else {
-		if (process.platform === 'win32') {
-			// we need to ensure we reset the env as a previous elevation process might have kept them in a wrong state
-			const envCommand = [];
-			for (const key in env) {
-				if (Object.prototype.hasOwnProperty.call(env, key)) {
-					envCommand.push(`set ${key}=${env[key]}`);
-				}
-			}
-			await exec(envCommand.join(' && '));
-		}
 		const spawned = await spawn(argv[0], argv.slice(1), {
 			env,
 		});

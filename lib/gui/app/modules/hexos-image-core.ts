@@ -180,6 +180,14 @@ export function getLatestImage(manifest: HexOSManifest): HexOSImageEntry {
  */
 const PROGRESS_INTERVAL_MS = 250;
 
+/**
+ * Node defaults streams to 64 KB, which for a 2 GB image means tens of
+ * thousands of chunk events, each one a JS callback and a hash update. A
+ * larger buffer cuts that by a factor of sixty-four and lets the disk work
+ * in sizes it actually likes.
+ */
+const STREAM_CHUNK_BYTES = 4 * 1024 * 1024;
+
 function throttleProgress(onProgress: ProgressCallback): {
 	report: ProgressCallback;
 	flush: () => void;
@@ -215,7 +223,9 @@ async function hashFile(
 	abortSignal?: AbortSignal,
 ): Promise<string> {
 	const hash = createHash('sha256');
-	const stream = createReadStream(filePath);
+	const stream = createReadStream(filePath, {
+		highWaterMark: STREAM_CHUNK_BYTES,
+	});
 	const { report, flush } = throttleProgress(onProgress);
 	let transferred = 0;
 	return await new Promise<string>((resolve, reject) => {
@@ -270,7 +280,9 @@ async function downloadFromUrl(
 ): Promise<string> {
 	const response = await httpsGet(url, { timeout: 60000, abortSignal });
 	const hash = createHash('sha256');
-	const output = createWriteStream(partPath);
+	const output = createWriteStream(partPath, {
+		highWaterMark: STREAM_CHUNK_BYTES,
+	});
 	const { report, flush } = throttleProgress(onProgress);
 	let transferred = 0;
 	let lastTime = Date.now();
