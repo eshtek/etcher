@@ -509,8 +509,21 @@ export class SourceSelector extends React.Component<
 								showHexOSDownload: false,
 								imageLoading: true,
 							});
-							await this.selectSource(imagePath, 'File').promise;
-							this.setState({ imageLoading: false });
+							// Clear the spinner in a finally: without it any
+							// rejection leaves the user staring at a spinner
+							// that never resolves and reports nothing.
+							try {
+								await this.selectSource(imagePath, 'File').promise;
+							} catch (error: any) {
+								this.handleError(
+									i18next.t('source.errorOpen'),
+									imagePath,
+									messages.error.openSource(imagePath, error.message),
+									error,
+								);
+							} finally {
+								this.setState({ imageLoading: false });
+							}
 						}}
 					/>
 				)}

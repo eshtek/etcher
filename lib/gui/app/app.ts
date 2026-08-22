@@ -122,6 +122,9 @@ function setDrives(drives: Dictionary<DrivelistDrive>) {
 // TODO: clean up this mess of exports
 export let requestMetadata: any;
 
+/** How long to wait for the sidecar to return image metadata. */
+const SOURCE_METADATA_TIMEOUT_MS = 120000;
+
 // start the api and spawn the child process
 spawnChildAndConnect({
 	withPrivileges: false,
@@ -131,14 +134,35 @@ spawnChildAndConnect({
 		emit('scan', {});
 
 		// make the sourceMetada awaitable to be used on source selection
+		//
+		// The sidecar can accept a sourceMetadata request and then never answer
+		// — it dies mid-read, or something outside the app blocks it from
+		// reading the image. Without a deadline this promise stays pending
+		// forever, and the caller's error handling never runs, so the UI sits
+		// on a spinner or a disabled button with nothing to report.
+		//
+		// The budget is generous because metadata for a compressed image can
+		// require scanning the whole archive; it exists to bound a hang, not to
+		// police slow reads.
 		requestMetadata = async (params: any): Promise<SourceMetadata> => {
 			emit('sourceMetadata', JSON.stringify(params));
 
-			return new Promise((resolve) =>
+			return new Promise((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					reject(
+						new Error(
+							`No response from the image reader after ${
+								SOURCE_METADATA_TIMEOUT_MS / 1000
+							}s.`,
+						),
+					);
+				}, SOURCE_METADATA_TIMEOUT_MS);
+
 				registerHandler('sourceMetadata', (data: any) => {
+					clearTimeout(timeout);
 					resolve(JSON.parse(data));
-				}),
-			);
+				});
+			});
 		};
 
 		registerHandler('drives', (data: any) => {
