@@ -170,6 +170,44 @@ export function getLatestImage(manifest: HexOSManifest): HexOSImageEntry {
 	return entry;
 }
 
+/**
+ * Progress arrives once per stream chunk — on a fast link that is roughly a
+ * hundred times a second. Every call reaches React, and under React 17 a
+ * setState from outside an event handler renders synchronously, on the very
+ * thread that has to drain the socket. Reporting every chunk measured about
+ * 9x slower than the link could carry (6 MB/s against curl's 54 MB/s on the
+ * same machine), so coalesce down to a rate a progress bar can actually use.
+ */
+const PROGRESS_INTERVAL_MS = 250;
+
+function throttleProgress(onProgress: ProgressCallback): {
+	report: ProgressCallback;
+	flush: () => void;
+} {
+	let lastEmit = 0;
+	let pending: DownloadProgress | undefined;
+	return {
+		report: (progress) => {
+			const now = Date.now();
+			if (now - lastEmit >= PROGRESS_INTERVAL_MS) {
+				lastEmit = now;
+				pending = undefined;
+				onProgress(progress);
+			} else {
+				pending = progress;
+			}
+		},
+		// Always land on the true final numbers; the last chunk is usually
+		// inside the throttle window and would otherwise never be shown.
+		flush: () => {
+			if (pending !== undefined) {
+				onProgress(pending);
+				pending = undefined;
+			}
+		},
+	};
+}
+
 async function hashFile(
 	filePath: string,
 	total: number,
@@ -178,6 +216,7 @@ async function hashFile(
 ): Promise<string> {
 	const hash = createHash('sha256');
 	const stream = createReadStream(filePath);
+	const { report, flush } = throttleProgress(onProgress);
 	let transferred = 0;
 	return await new Promise<string>((resolve, reject) => {
 		const onAbort = () => {
@@ -188,11 +227,12 @@ async function hashFile(
 		stream.on('data', (chunk) => {
 			hash.update(chunk);
 			transferred += chunk.length;
-			onProgress({ phase: 'verifying', transferred, total, speed: 0 });
+			report({ phase: 'verifying', transferred, total, speed: 0 });
 		});
 		stream.on('error', reject);
 		stream.on('end', () => {
 			abortSignal?.removeEventListener('abort', onAbort);
+			flush();
 			resolve(hash.digest('hex'));
 		});
 	});
@@ -231,6 +271,7 @@ async function downloadFromUrl(
 	const response = await httpsGet(url, { timeout: 60000, abortSignal });
 	const hash = createHash('sha256');
 	const output = createWriteStream(partPath);
+	const { report, flush } = throttleProgress(onProgress);
 	let transferred = 0;
 	let lastTime = Date.now();
 	let lastTransferred = 0;
@@ -246,7 +287,7 @@ async function downloadFromUrl(
 				lastTime = now;
 				lastTransferred = transferred;
 			}
-			onProgress({
+			report({
 				phase: 'downloading',
 				transferred,
 				total: entry.size,
@@ -255,7 +296,10 @@ async function downloadFromUrl(
 		});
 		response.on('error', reject);
 		output.on('error', reject);
-		output.on('finish', resolve);
+		output.on('finish', () => {
+			flush();
+			resolve();
+		});
 		response.pipe(output);
 	});
 	return hash.digest('hex');
