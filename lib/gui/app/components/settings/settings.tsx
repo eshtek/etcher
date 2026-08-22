@@ -131,16 +131,14 @@ export function SettingsModal({ toggleModal }: SettingsModalProps) {
 				<Flex
 					mt={18}
 					alignItems="center"
-					color="#00aeef"
+					color="#a95fd8"
 					style={{
 						width: 'fit-content',
 						cursor: 'pointer',
 						fontSize: 14,
 					}}
 					onClick={() =>
-						openExternal(
-							'https://github.com/balena-io/etcher/blob/master/CHANGELOG.md',
-						)
+						openExternal('https://github.com/eshtek/etcher/blob/master/CHANGELOG.md')
 					}
 				>
 					<GithubSvg
@@ -148,7 +146,7 @@ export function SettingsModal({ toggleModal }: SettingsModalProps) {
 						fill="currentColor"
 						style={{ marginRight: 8 }}
 					/>
-					<Txt style={{ borderBottom: '1px solid #00aeef' }}>{version}</Txt>
+					<Txt style={{ borderBottom: '1px solid #a95fd8' }}>{version}</Txt>
 				</Flex>
 			</Flex>
 		</Modal>

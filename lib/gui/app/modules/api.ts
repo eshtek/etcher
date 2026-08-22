@@ -205,19 +205,26 @@ async function spawnChildAndConnect({
 	// spawn the child process, which will act as the ws server
 	// ETCHER_NO_SPAWN_UTIL can be set to launch a GUI only version of etcher, in that case you'll probably want to set other ENV to match your setup
 	if (!process.env.ETCHER_NO_SPAWN_UTIL) {
+		let result;
 		try {
-			const result = await spawnChild(
+			result = await spawnChild(
 				withPrivileges,
 				etcherServerId,
 				etcherServerAddress,
 				etcherServerPort,
 			);
-			if (result.cancelled) {
-				throw new Error('Starting flasher sidecar process was cancelled');
-			}
 		} catch (error) {
 			console.error('Error starting flasher sidecar process', error);
 			throw new Error('Error starting flasher sidecar process');
+		}
+		if (result.cancelled) {
+			// The user dismissed the elevation prompt; let callers tell this
+			// apart from an actual failure
+			const cancelledError: Error & { cancelled?: boolean } = new Error(
+				'Starting flasher sidecar process was cancelled',
+			);
+			cancelledError.cancelled = true;
+			throw cancelledError;
 		}
 	}
 

@@ -9,6 +9,8 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { exec } from 'child_process';
 
+import { resolve } from 'path';
+
 import { mainConfig, rendererConfig } from './webpack.config';
 import * as sidecar from './forge.sidecar';
 
@@ -26,7 +28,7 @@ if (process.env.NODE_ENV === 'production') {
 	};
 
 	winSigningConfig = {
-		signWithParams: `-sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} -tr ${process.env.TIMESTAMP_SERVER} -td sha256 -fd sha256 -d balena-etcher`,
+		signWithParams: `-sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} -tr ${process.env.TIMESTAMP_SERVER} -td sha256 -fd sha256 -d hexos-imager`,
 	};
 }
 
@@ -35,12 +37,12 @@ const config: ForgeConfig = {
 		asar: true,
 		icon: './assets/icon',
 		executableName:
-			process.platform === 'linux' ? 'balena-etcher' : 'balenaEtcher',
-		appBundleId: 'io.balena.etcher',
-		appCategoryType: 'public.app-category.developer-tools',
-		appCopyright: 'Copyright 2016-2023 Balena Ltd',
+			process.platform === 'linux' ? 'hexos-imager' : 'HexOS Imager',
+		appBundleId: 'com.hexos.imager',
+		appCategoryType: 'public.app-category.utilities',
+		appCopyright: 'Copyright 2026 Eshtek Inc.',
 		darwinDarkModeSupport: true,
-		protocols: [{ name: 'etcher', schemes: ['etcher'] }],
+		protocols: [{ name: 'hexos-imager', schemes: ['hexos-imager'] }],
 		extraResource: [
 			'lib/shared/sudo/sudo-askpass.osascript-zh.js',
 			'lib/shared/sudo/sudo-askpass.osascript-en.js',
@@ -64,13 +66,23 @@ const config: ForgeConfig = {
 			...winSigningConfig,
 		}),
 		new MakerDMG({
-			background: './assets/dmg/background.tiff',
-			icon: './assets/icon.icns',
+			// Absolute paths: appdmg resolves relative paths against its
+			// generated spec file, silently falling back to its default
+			// background/icon. The .png background lets appdmg pick up the
+			// @2x sibling for retina.
+			background: resolve(__dirname, 'assets/dmg/background.png'),
+			icon: resolve(__dirname, 'assets/icon.icns'),
 			iconSize: 110,
 			contents: ((opts: { appPath: string }) => {
 				return [
 					{ x: 140, y: 250, type: 'file', path: opts.appPath },
 					{ x: 415, y: 250, type: 'link', path: '/Applications' },
+					// park the DMG's hidden housekeeping files outside the
+					// window so they don't clobber the background for users
+					// who show hidden files
+					{ x: 900, y: 250, type: 'position', path: '.background' },
+					{ x: 900, y: 250, type: 'position', path: '.VolumeIcon.icns' },
+					{ x: 900, y: 250, type: 'position', path: '.DS_Store' },
 				];
 			}) as any, // type of MakerDMGConfig omits `appPath`
 			additionalDMGOptions: {
@@ -138,10 +150,10 @@ const config: ForgeConfig = {
 	hooks: {
 		postPackage: async (_forgeConfig, options) => {
 			if (options.platform === 'linux') {
-				// symlink the etcher binary from balena-etcher to balenaEtcher to ensure compatibility with the wdio suite and the old name
+				// symlink the binary under the old balenaEtcher name to ensure compatibility with the wdio suite
 				await new Promise<void>((resolve, reject) => {
 					exec(
-						`ln -s "${options.outputPaths}/balena-etcher" "${options.outputPaths}/balenaEtcher"`,
+						`ln -s "${options.outputPaths}/hexos-imager" "${options.outputPaths}/balenaEtcher"`,
 						(err) => {
 							if (err) {
 								reject(err);

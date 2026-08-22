@@ -20,8 +20,6 @@ import * as _ from 'lodash';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
-import * as packageJSON from '../../../../package.json';
-
 const debug = _debug('etcher:models:settings');
 
 const JSON_INDENT = 2;
@@ -75,11 +73,18 @@ export async function writeConfigFile(
 }
 
 const DEFAULT_SETTINGS: _.Dictionary<any> = {
-	errorReporting: true,
-	updatesEnabled: ['appimage', 'nsis', 'dmg'].includes(packageJSON.packageType),
+	// No Sentry DSN is configured for HexOS Imager yet, so keep reporting off
+	errorReporting: false,
+	// No update server is configured for HexOS Imager yet
+	updatesEnabled: false,
 	desktopNotifications: true,
 	autoBlockmapping: true,
 	decompressFirst: true,
+	// Primary: the HexOS API (channel-aware, reports minImagerVersion).
+	// Fallback: the static manifest, which is immune to cloud incidents.
+	hexosManifestUrl: 'https://api.hexos.com/api/releases',
+	hexosManifestFallbackUrl: 'https://downloads.hexos.com/manifest.json',
+	hexosChannel: 'stable',
 };
 
 const settings = _.cloneDeep(DEFAULT_SETTINGS);

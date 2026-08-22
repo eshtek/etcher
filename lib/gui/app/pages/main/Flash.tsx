@@ -122,8 +122,6 @@ async function flashImageToDrive(
 			errorMessage = messages.error.genericFlashError(error);
 		}
 		return errorMessage;
-	} finally {
-		availableDrives.setDrives([]);
 	}
 
 	return '';
@@ -283,7 +281,7 @@ export class FlashStep extends React.PureComponent<
 							<Flex
 								justifyContent="space-between"
 								fontSize="14px"
-								color="#7e8085"
+								color="#b3b8bd"
 								width="100%"
 							>
 								<Txt>

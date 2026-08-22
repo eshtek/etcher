@@ -24,7 +24,7 @@ import { toJSON } from '../shared/errors';
 import { GENERAL_ERROR, SUCCESS } from '../shared/exit-codes';
 import type { WriteOptions } from './types/types';
 import { write, cleanup } from './child-writer';
-import { startScanning } from './scanner';
+import { startScanning, getCurrentDrives } from './scanner';
 import { getSourceMetadata } from './source-metadata';
 import type { DrivelistDrive } from '../shared/drive-constraints';
 import type { SourceMetadata } from '../shared/typings/source-selector';
@@ -241,7 +241,19 @@ function setup(): Promise<EmitLog> {
 				// start scanning for drives
 				scan: () => {
 					log('Scan requested');
+					// Rebind the emitters to this connection: a reloaded window
+					// reconnects to the same process, and events must not keep
+					// going to the previous (dead) socket.
+					emitLog = log;
+					emitState = (state) => emit('state', state);
+					emitFail = (data) => emit('fail', data);
+					emitDrives = (drives) => emit('drives', JSON.stringify(values(drives)));
+					emitSourceMetadata = (sourceMetadata) =>
+						emit('sourceMetadata', JSON.stringify(sourceMetadata));
 					startScanning();
+					// Send the current list right away: a reconnecting client
+					// would otherwise only hear about future attach/detach events
+					emitDrives(getCurrentDrives());
 				},
 
 				// route `cancel` from client

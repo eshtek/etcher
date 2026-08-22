@@ -66,15 +66,8 @@ store.dispatch({
 
 console.log(outdent`
 	${outdent}
-	 _____ _       _
-	|  ___| |     | |
-	| |__ | |_ ___| |__   ___ _ __
-	|  __|| __/ __| '_ \\ / _ \\ '__|
-	| |___| || (__| | | |  __/ |
-	\\____/ \\__\\___|_| |_|\\___|_|
-
-	Interested in joining the Etcher team?
-	Drop us a line at join+etcher@balena.io
+	HexOS Imager
+	https://hexos.com
 
 	Version = ${packageJSON.version}, Type = ${packageJSON.packageType}
 `);

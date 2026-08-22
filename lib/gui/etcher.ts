@@ -31,7 +31,7 @@ import { once } from 'lodash';
 
 import './app/i18n';
 
-import { packageType, version } from '../../package.json';
+import { packageType, productName, version } from '../../package.json';
 import * as EXIT_CODES from '../shared/exit-codes';
 import * as settings from './app/models/settings';
 import { buildWindowMenu } from './menu';
@@ -41,7 +41,7 @@ import { anonymizeSentryData } from './app/modules/analytics';
 
 import { delay } from '../shared/utils';
 
-const customProtocol = 'etcher';
+const customProtocol = 'hexos-imager';
 const scheme = `${customProtocol}://`;
 const updatablePackageTypes = ['appimage', 'nsis', 'dmg'];
 const packageUpdatable = updatablePackageTypes.includes(packageType);
@@ -257,6 +257,15 @@ async function main(): Promise<void> {
 		electron.app.quit();
 	} else {
 		initSentryMain();
+		// macOS renders "Version <CFBundleShortVersionString> (<CFBundleVersion>)". Both are
+		// the same number here, so the panel repeats itself; an empty build string drops the
+		// parenthesised half.
+		electron.app.setAboutPanelOptions({
+			applicationName: productName,
+			applicationVersion: version,
+			version: '',
+			copyright: 'Copyright 2026 Eshtek Inc.',
+		});
 		await electron.app.whenReady();
 		const window = await createMainWindow();
 		electron.app.on('second-instance', async (_event, argv) => {

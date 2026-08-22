@@ -41,6 +41,16 @@ body {
 	width: 100%;
 }
 
+/* Use the SemiBold face everywhere for readability on the dark theme;
+   form controls don't inherit body font-weight, so set them explicitly */
+body,
+button,
+input,
+textarea,
+select {
+	font-weight: 600;
+}
+
 /* Prevent text selection */
 body {
 	-webkit-user-select: none;

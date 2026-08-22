@@ -46,9 +46,19 @@ async function performWrite(
 	const { autoBlockmapping, decompressFirst } = await settings.getAll();
 
 	// Spawn the child process with privileges and wait for the connection to be made
-	const { emit, registerHandler } = await spawnChildAndConnect({
-		withPrivileges: true,
-	});
+	let child;
+	try {
+		child = await spawnChildAndConnect({
+			withPrivileges: true,
+		});
+	} catch (error: any) {
+		if (error?.cancelled) {
+			// Dismissing the elevation prompt is a cancelled flash, not an error
+			return { cancelled: true };
+		}
+		throw error;
+	}
+	const { emit, registerHandler } = child;
 
 	return await new Promise((resolve, reject) => {
 		// if the connection failed, reject the promise

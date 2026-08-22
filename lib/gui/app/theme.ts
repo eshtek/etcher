@@ -47,7 +47,15 @@ export const colors = {
 	},
 	primary: {
 		foreground: '#fff',
-		background: '#00aeef',
+		// Deck UI --primary: hsl(276 54% 45%)
+		background: '#7F35B2',
+		// rendition's own components (modal action buttons, progress bars,
+		// links, checkboxes) read main/light/dark/semilight and default to
+		// blue unless every key is overridden
+		main: '#7F35B2',
+		light: '#9b4ed1',
+		dark: '#6a2b96',
+		semilight: '#d9b3f2',
 	},
 	secondary: {
 		foreground: '#000',
@@ -90,26 +98,47 @@ export const theme = _.merge({}, Theme, {
 	button: {
 		border: {
 			width: '0',
-			radius: '24px',
+			// Deck UI rounded-lg
+			radius: '8px',
 		},
 		disabled: {
 			opacity: 1,
 		},
-		extend: () => `
+		extend: (props: any) => `
 			width: 200px;
 			font-size: 16px;
+			font-weight: 600;
 
 			&& {
 				width: 200px;
 				height: 48px;
 			}
 
+			${
+				props?.primary && !props?.plain
+					? `
+			:enabled {
+				background-image: linear-gradient(135deg, #cb2eff, #7f35b2);
+				background-color: #7f35b2;
+			}
+
+			:enabled:hover,
+			:enabled:focus {
+				background-image: none;
+				background-color: #7f35b2;
+			}
+			`
+					: ''
+			}
+
 			:disabled {
+				background-image: none;
 				background-color: ${colors.dark.disabled.background};
 				color: ${colors.dark.disabled.foreground};
 				opacity: 1;
 
 				:hover {
+					background-image: none;
 					background-color: ${colors.dark.disabled.background};
 					color: ${colors.dark.disabled.foreground};
 				}

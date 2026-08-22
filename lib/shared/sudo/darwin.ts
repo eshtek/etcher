@@ -40,10 +40,10 @@ export async function sudo(
 		lang = 'en';
 	}
 
-	// Build the shell command string
-	const shellCmd = `echo ${SUCCESSFUL_AUTH_MARKER} && ${command[0]} ${command
-		.slice(1)
-		.map((a) => a.replace(/\\/g, '\\\\').replace(/"/g, '\\"'))
+	// Build the shell command string, quoting every element: the app path
+	// contains spaces (e.g. "HexOS Imager.app") and would be word-split
+	const shellCmd = `echo ${SUCCESSFUL_AUTH_MARKER} && ${command
+		.map((a) => `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
 		.join(' ')}`;
 
 	let elevated = 'pending';
@@ -63,9 +63,23 @@ export async function sudo(
 
 		elevateProcess.stdout.on('data', (data) => {
 			// console.log(`stdout: ${data}`);
+			// Only the first signal counts: once granted, later child output
+			// on stdout must not flip the state back to rejected
+			if (elevated !== 'pending') {
+				return;
+			}
 			if (data.toString().includes(SUCCESSFUL_AUTH_MARKER)) {
 				elevated = 'granted';
 			} else {
+				elevated = 'rejected';
+			}
+		});
+
+		// When the askpass dialog is dismissed, sudo prints nothing to
+		// stdout — it just exits non-zero. Without this, cancellation
+		// would only surface via the 30s elevation timeout.
+		elevateProcess.on('close', () => {
+			if (elevated === 'pending') {
 				elevated = 'rejected';
 			}
 		});

@@ -13,13 +13,15 @@ export function hasAvailableDrives() {
 }
 
 driveScanner.on('error', (error) => {
-	// Stop the drive scanning loop in case of errors,
-	// otherwise we risk presenting the same error over
-	// and over again to the user, while also heavily
-	// spamming our error reporting service.
+	// Restart scanning after a short delay: transient enumeration errors
+	// (e.g. a drive being written to or ejected mid-scan) must not leave
+	// the app permanently blind to drives.
 	driveScanner.stop();
 
-	console.log('scanner error', error);
+	console.log('scanner error, restarting in 2s', error);
+	setTimeout(() => {
+		driveScanner.start();
+	}, 2000);
 });
 
 function setDrives(drives: Dictionary<DrivelistDrive>) {
@@ -171,9 +173,16 @@ const COMPUTE_MODULE_DESCRIPTIONS: Dictionary<string> = {
 	[USB_PRODUCT_ID_BCM2710_BOOT]: 'Compute Module 3',
 };
 
+let listenersRegistered = false;
+
 const startScanning = () => {
-	driveScanner.on('attach', (drive) => addDrive(drive));
-	driveScanner.on('detach', (drive) => removeDrive(drive));
+	// `scan` can be requested again by a reconnecting client; don't stack
+	// duplicate listeners
+	if (!listenersRegistered) {
+		driveScanner.on('attach', (drive) => addDrive(drive));
+		driveScanner.on('detach', (drive) => removeDrive(drive));
+		listenersRegistered = true;
+	}
 	driveScanner.start();
 };
 
@@ -181,4 +190,6 @@ const stopScanning = () => {
 	driveScanner.stop();
 };
 
-export { startScanning, stopScanning };
+const getCurrentDrives = () => getDrives();
+
+export { startScanning, stopScanning, getCurrentDrives };

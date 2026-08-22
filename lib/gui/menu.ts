@@ -66,24 +66,24 @@ export function buildWindowMenu(window: electron.BrowserWindow) {
 			label: i18next.t('menu.help'),
 			submenu: [
 				{
-					label: i18next.t('menu.pro'),
+					label: i18next.t('menu.website'),
 					click() {
-						electron.shell.openExternal(
-							'https://etcher.io/pro?utm_source=etcher_menu&ref=etcher_menu',
-						);
+						electron.shell.openExternal('https://hexos.com');
 					},
 				},
 				{
-					label: i18next.t('menu.website'),
+					label: i18next.t('menu.docs'),
 					click() {
-						electron.shell.openExternal('https://etcher.io?ref=etcher_menu');
+						electron.shell.openExternal(
+							'https://docs.hexos.com/getting-started/installation/InstallGuide',
+						);
 					},
 				},
 				{
 					label: i18next.t('menu.issue'),
 					click() {
 						electron.shell.openExternal(
-							'https://github.com/balena-io/etcher/issues',
+							'https://github.com/eshtek/etcher/issues',
 						);
 					},
 				},

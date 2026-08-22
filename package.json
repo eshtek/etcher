@@ -1,17 +1,17 @@
 {
-  "name": "balena-etcher",
+  "name": "hexos-imager",
   "private": true,
-  "displayName": "balenaEtcher",
-  "productName": "balenaEtcher",
+  "displayName": "HexOS Imager",
+  "productName": "HexOS Imager",
   "version": "2.1.6",
   "packageType": "local",
   "main": ".webpack/main",
-  "description": "Flash OS images to SD cards and USB drives, safely and easily.",
-  "productDescription": "Etcher is a powerful OS image flasher built with web technologies to ensure flashing an SDCard or USB drive is a pleasant and safe experience. It protects you from accidentally writing to your hard-drives, ensures every byte of data was written correctly and much more.",
-  "homepage": "https://github.com/balena-io/etcher",
+  "description": "Download, verify, and flash HexOS to USB drives, safely and easily.",
+  "productDescription": "HexOS Imager downloads the latest HexOS installer, verifies its checksum, and flashes it to a USB drive so you can install HexOS on your server. It protects you from accidentally writing to your hard-drives and ensures every byte of data was written correctly.",
+  "homepage": "https://hexos.com",
   "repository": {
     "type": "git",
-    "url": "git@github.com:balena-io/etcher.git"
+    "url": "git@github.com:eshtek/etcher.git"
   },
   "scripts": {
     "prettify": "prettier --write lib/**/*.css && balena-lint --fix --typescript typings lib tests forge.config.ts forge.sidecar.ts webpack.config.ts",
@@ -27,7 +27,7 @@
       "pre-commit": "npm run prettify"
     }
   },
-  "author": "Balena Ltd. <hello@balena.io>",
+  "author": "Eshtek Inc. <support@hexos.com>",
   "license": "Apache-2.0",
   "dependencies": {
     "@electron/remote": "^2.1.2",

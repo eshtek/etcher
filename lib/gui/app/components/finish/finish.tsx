@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
+import { basename } from 'path';
 import * as React from 'react';
 import { Flex } from 'rendition';
 import { v4 as uuidV4 } from 'uuid';
 
 import * as flashState from '../../models/flash-state';
 import * as selectionState from '../../models/selection-state';
-import * as settings from '../../models/settings';
 import { Actions, store } from '../../models/store';
 import { FlashAnother } from '../flash-another/flash-another';
 import type { FlashError } from '../flash-results/flash-results';
 import { FlashResults } from '../flash-results/flash-results';
-import { SafeWebview } from '../safe-webview/safe-webview';
+import { prettyHexOSImageName } from '../../utils/hexos-image-name';
 
 function restart(goToMain: () => void) {
 	selectionState.deselectAllDrives();
@@ -39,19 +39,7 @@ function restart(goToMain: () => void) {
 	goToMain();
 }
 
-async function getSuccessBannerURL() {
-	return (
-		(await settings.get('successBannerURL')) ??
-		'https://efp.balena.io/success-banner?borderTop=false&darkBackground=true'
-	);
-}
-
 function FinishPage({ goToMain }: { goToMain: () => void }) {
-	const [webviewShowing, setWebviewShowing] = React.useState(false);
-	const [successBannerURL, setSuccessBannerURL] = React.useState('');
-	(async () => {
-		setSuccessBannerURL(await getSuccessBannerURL());
-	})();
 	const flashResults = flashState.getFlashResults();
 	const errors: FlashError[] = (
 		store.getState().toJS().failedDeviceErrors || []
@@ -75,7 +63,7 @@ function FinishPage({ goToMain }: { goToMain: () => void }) {
 	return (
 		<Flex height="100%" justifyContent="space-between">
 			<Flex
-				width={webviewShowing ? '36.2vw' : '100vw'}
+				width="100vw"
 				height="100vh"
 				alignItems="center"
 				justifyContent="center"
@@ -84,11 +72,13 @@ function FinishPage({ goToMain }: { goToMain: () => void }) {
 					position: 'absolute',
 					top: 0,
 					zIndex: 1,
-					boxShadow: '0 2px 15px 0 rgba(0, 0, 0, 0.2)',
 				}}
 			>
 				<FlashResults
-					image={selectionState.getImage()?.name}
+					image={prettyHexOSImageName(
+						selectionState.getImage()?.name ??
+							basename(selectionState.getImage()?.path ?? ''),
+					)}
 					results={results}
 					skip={skip}
 					errors={errors}
@@ -102,20 +92,6 @@ function FinishPage({ goToMain }: { goToMain: () => void }) {
 					}}
 				/>
 			</Flex>
-			{successBannerURL.length && (
-				<SafeWebview
-					src={successBannerURL}
-					onWebviewShow={setWebviewShowing}
-					style={{
-						display: webviewShowing ? 'flex' : 'none',
-						position: 'absolute',
-						right: 0,
-						bottom: 0,
-						width: '63.8vw',
-						height: '100vh',
-					}}
-				/>
-			)}
 		</Flex>
 	);
 }

@@ -82,6 +82,9 @@ function build(
 				path.join(sourcesDir, 'util', 'api.js'),
 				'-c',
 				'pkg-sidecar.json',
+				// shrink the snapshot; decompression cost at startup is negligible
+				'--compress',
+				'Brotli',
 				// `--no-bytecode` so that we can cross-compile for arm64 on x64
 				'--no-bytecode',
 				'--public',

@@ -37,10 +37,32 @@ export const ThemedProvider = (props: any) => (
 	<Provider theme={theme} {...props}></Provider>
 );
 
+// Deck UI's primary button: brand gradient (accent → primary, the logo's
+// own stops), collapsing to solid primary on hover
+export const deckGradient = 'linear-gradient(135deg, #cb2eff, #7f35b2)';
+
 export const BaseButton = styled(Button)`
 	width: 200px;
 	height: 48px;
 	font-size: 16px;
+	font-weight: 600;
+	border-radius: 8px;
+
+	${(props: any) =>
+		props.primary && !props.plain
+			? `
+	&&:enabled {
+		background-image: ${deckGradient};
+		background-color: #7f35b2;
+	}
+
+	&&:enabled:hover,
+	&&:enabled:focus {
+		background-image: none;
+		background-color: #7f35b2;
+	}
+	`
+			: ''}
 `;
 
 export const IconButton = styled((props) => <Button plain {...props} />)`
@@ -65,8 +87,10 @@ export const StepButton = styled((props: ButtonProps) => (
 
 export const ChangeButton = styled(Button)`
 	&& {
-		border-radius: 24px;
-		color: ${colors.primary.background};
+		border-radius: 8px;
+		/* light lavender: readable on the dark background, unlike primary */
+		color: #d9a1ff;
+		font-weight: 600;
 		padding: 0;
 		height: 18px;
 		font-size: 14px;
@@ -75,7 +99,7 @@ export const ChangeButton = styled(Button)`
 			&:hover,
 			&:focus,
 			&:active {
-				color: #8f9297;
+				color: #ffffff;
 			}
 		}
 	}
@@ -86,30 +110,26 @@ export const StepNameButton = styled(BaseButton)`
 	justify-content: center;
 	align-items: center;
 	width: 100%;
-	font-weight: normal;
+	font-weight: 600;
 	color: ${colors.dark.foreground};
 
 	&:enabled {
 		&:hover,
 		&:focus,
 		&:active {
-			color: #8f9297;
+			color: #c3c7cc;
 		}
 	}
 `;
 
 export const Footer = styled(Txt)`
 	margin-top: 10px;
-	color: ${colors.dark.disabled.foreground};
+	color: ${colors.dark.soft.foreground};
 	font-size: 10px;
 `;
 
 export const DetailsText = (props: FlexProps) => (
-	<Flex
-		alignItems="center"
-		color={colors.dark.disabled.foreground}
-		{...props}
-	/>
+	<Flex alignItems="center" color={colors.dark.soft.foreground} {...props} />
 );
 
 const modalFooterShadowCss = css`

@@ -14,30 +14,19 @@
  * limitations under the License.
  */
 
-import CopySvg from '@fortawesome/fontawesome-free/svgs/solid/copy.svg';
+import DownloadSvg from '@fortawesome/fontawesome-free/svgs/solid/download.svg';
 import FileSvg from '@fortawesome/fontawesome-free/svgs/solid/file.svg';
-import LinkSvg from '@fortawesome/fontawesome-free/svgs/solid/link.svg';
 import ExclamationTriangleSvg from '@fortawesome/fontawesome-free/svgs/solid/triangle-exclamation.svg';
-import ChevronDownSvg from '@fortawesome/fontawesome-free/svgs/solid/chevron-down.svg';
-import ChevronRightSvg from '@fortawesome/fontawesome-free/svgs/solid/chevron-right.svg';
 import type { IpcRendererEvent } from 'electron';
 import { ipcRenderer } from 'electron';
-import { uniqBy, isNil } from 'lodash';
+import { isNil } from 'lodash';
 import * as path from 'path';
 import prettyBytes from 'pretty-bytes';
 import * as React from 'react';
 import { requestMetadata } from '../../app';
 
 import type { ButtonProps } from 'rendition';
-import {
-	Flex,
-	Modal as SmallModal,
-	Txt,
-	Card as BaseCard,
-	Input,
-	Spinner,
-	Link,
-} from 'rendition';
+import { Flex, Modal as SmallModal, Txt, Spinner } from 'rendition';
 import styled from 'styled-components';
 
 import * as errors from '../../../../shared/errors';
@@ -51,19 +40,18 @@ import * as osDialog from '../../os/dialog';
 
 import {
 	ChangeButton,
+	deckGradient,
 	DetailsText,
-	Modal,
 	StepButton,
 	StepNameButton,
-	ScrollableFlex,
 } from '../../styled-components';
 import { colors } from '../../theme';
+import { prettyHexOSImageName } from '../../utils/hexos-image-name';
 import { middleEllipsis } from '../../utils/middle-ellipsis';
 import { SVGIcon } from '../svg-icon/svg-icon';
 
 import ImageSvg from '../../../assets/image.svg';
-import SrcSvg from '../../../assets/src.svg';
-import { DriveSelector } from '../drive-selector/drive-selector';
+import { HexOSDownload } from '../hexos-download/hexos-download';
 import type { DrivelistDrive } from '../../../../shared/drive-constraints';
 import { isJson } from '../../../../shared/utils';
 import type {
@@ -73,56 +61,16 @@ import type {
 } from '../../../../shared/typings/source-selector';
 import * as i18next from 'i18next';
 
-const recentUrlImagesKey = 'recentUrlImages';
-
-function normalizeRecentUrlImages(urls: any[]): URL[] {
-	if (!Array.isArray(urls)) {
-		urls = [];
-	}
-	urls = urls
-		.map((url) => {
-			try {
-				return new URL(url);
-			} catch (error: any) {
-				// Invalid URL, skip
-			}
-		})
-		.filter((url) => url !== undefined);
-	urls = uniqBy(urls, (url) => url.href);
-	return urls.slice(urls.length - 5);
-}
-
-function getRecentUrlImages(): URL[] {
-	let urls = [];
-	try {
-		urls = JSON.parse(localStorage.getItem(recentUrlImagesKey) || '[]');
-	} catch {
-		// noop
-	}
-	return normalizeRecentUrlImages(urls);
-}
-
-function setRecentUrlImages(urls: URL[]) {
-	const normalized = normalizeRecentUrlImages(urls.map((url: URL) => url.href));
-	localStorage.setItem(recentUrlImagesKey, JSON.stringify(normalized));
-}
-
 const isURL = (imagePath: string) =>
 	imagePath.startsWith('https://') || imagePath.startsWith('http://');
-
-const Card = styled(BaseCard)`
-	hr {
-		margin: 5px 0;
-	}
-`;
 
 // TODO move these styles to rendition
 const ModalText = styled.p`
 	a {
-		color: rgb(0, 174, 239);
+		color: #a95fd8;
 
 		&:hover {
-			color: rgb(0, 139, 191);
+			color: #8534c0;
 		}
 	}
 `;
@@ -139,132 +87,6 @@ function getState() {
 function isString(value: any): value is string {
 	return typeof value === 'string';
 }
-
-const URLSelector = ({
-	done,
-	cancel,
-}: {
-	done: (imageURL: string, auth?: Authentication) => void;
-	cancel: () => void;
-}) => {
-	const [imageURL, setImageURL] = React.useState('');
-	const [recentImages, setRecentImages] = React.useState<URL[]>([]);
-	const [loading, setLoading] = React.useState(false);
-	const [showBasicAuth, setShowBasicAuth] = React.useState(false);
-	const [username, setUsername] = React.useState('');
-	const [password, setPassword] = React.useState('');
-	React.useEffect(() => {
-		const fetchRecentUrlImages = async () => {
-			const recentUrlImages: URL[] = await getRecentUrlImages();
-			setRecentImages(recentUrlImages);
-		};
-		fetchRecentUrlImages();
-	}, []);
-	return (
-		<Modal
-			cancel={cancel}
-			primaryButtonProps={{
-				disabled: loading || !imageURL,
-			}}
-			action={loading ? <Spinner /> : i18next.t('ok')}
-			done={async () => {
-				setLoading(true);
-				const urlStrings = recentImages.map((url: URL) => url.href);
-				const normalizedRecentUrls = normalizeRecentUrlImages([
-					...urlStrings,
-					imageURL,
-				]);
-				setRecentUrlImages(normalizedRecentUrls);
-				const auth = username ? { username, password } : undefined;
-				await done(imageURL, auth);
-			}}
-		>
-			<Flex flexDirection="column">
-				<Flex mb={15} style={{ width: '100%' }} flexDirection="column">
-					<Txt mb="10px" fontSize="24px">
-						{i18next.t('source.useSourceURL')}
-					</Txt>
-					<Input
-						value={imageURL}
-						placeholder={i18next.t('source.enterValidURL')}
-						type="text"
-						onChange={(evt: React.ChangeEvent<HTMLInputElement>) =>
-							setImageURL(evt.target.value)
-						}
-					/>
-					<Link
-						mt={15}
-						mb={15}
-						fontSize="14px"
-						onClick={() => {
-							if (showBasicAuth) {
-								setUsername('');
-								setPassword('');
-							}
-							setShowBasicAuth(!showBasicAuth);
-						}}
-					>
-						<Flex alignItems="center">
-							{showBasicAuth && (
-								<ChevronDownSvg height="1em" fill="currentColor" />
-							)}
-							{!showBasicAuth && (
-								<ChevronRightSvg height="1em" fill="currentColor" />
-							)}
-							<Txt ml={8}>{i18next.t('source.auth')}</Txt>
-						</Flex>
-					</Link>
-					{showBasicAuth && (
-						<React.Fragment>
-							<Input
-								mb={15}
-								value={username}
-								placeholder={i18next.t('source.username')}
-								type="text"
-								onChange={(evt: React.ChangeEvent<HTMLInputElement>) =>
-									setUsername(evt.target.value)
-								}
-							/>
-							<Input
-								value={password}
-								placeholder={i18next.t('source.password')}
-								type="password"
-								onChange={(evt: React.ChangeEvent<HTMLInputElement>) =>
-									setPassword(evt.target.value)
-								}
-							/>
-						</React.Fragment>
-					)}
-				</Flex>
-				{recentImages.length > 0 && (
-					<Flex flexDirection="column" height="78.6%">
-						<Txt fontSize={18}>Recent</Txt>
-						<ScrollableFlex flexDirection="column">
-							<Card
-								p="10px 15px"
-								rows={recentImages
-									.map((recent) => (
-										<Txt
-											key={recent.href}
-											onClick={() => {
-												setImageURL(recent.href);
-											}}
-											style={{
-												overflowWrap: 'break-word',
-											}}
-										>
-											{recent.pathname.split('/').pop()} - {recent.href}
-										</Txt>
-									))
-									.reverse()}
-							/>
-						</ScrollableFlex>
-					</Flex>
-				)}
-			</Flex>
-		</Modal>
-	);
-};
 
 interface Flow {
 	icon?: JSX.Element;
@@ -287,8 +109,9 @@ const FlowSelector = styled(
 		</StepButton>
 	),
 )`
-	border-radius: 24px;
-	color: rgba(255, 255, 255, 0.7);
+	border-radius: 8px;
+	color: rgba(255, 255, 255, 0.92);
+	font-weight: 600;
 
 	:enabled:focus,
 	:enabled:focus svg {
@@ -296,9 +119,9 @@ const FlowSelector = styled(
 	}
 
 	:enabled:hover {
+		background-image: ${deckGradient};
 		background-color: ${colors.primary.background};
 		color: ${colors.primary.foreground};
-		font-weight: 600;
 
 		svg {
 			color: ${colors.primary.foreground} !important;
@@ -308,7 +131,6 @@ const FlowSelector = styled(
 
 interface SourceSelectorProps {
 	flashing: boolean;
-	hideAnalyticsAlert: () => void;
 }
 
 interface SourceSelectorState {
@@ -317,8 +139,7 @@ interface SourceSelectorState {
 	imageSize?: number;
 	warning: { message: string; title: string | null } | null;
 	showImageDetails: boolean;
-	showURLSelector: boolean;
-	showDriveSelector: boolean;
+	showHexOSDownload: boolean;
 	defaultFlowActive: boolean;
 	imageSelectorOpen: boolean;
 	imageLoading: boolean;
@@ -336,8 +157,7 @@ export class SourceSelector extends React.Component<
 			...getState(),
 			warning: null,
 			showImageDetails: false,
-			showURLSelector: false,
-			showDriveSelector: false,
+			showHexOSDownload: false,
 			defaultFlowActive: true,
 			imageSelectorOpen: false,
 			imageLoading: false,
@@ -360,20 +180,6 @@ export class SourceSelector extends React.Component<
 		ipcRenderer.removeListener('select-image', this.onSelectImage);
 	}
 
-	public componentDidUpdate(
-		_prevProps: Readonly<SourceSelectorProps>,
-		prevState: Readonly<SourceSelectorState>,
-	) {
-		if (
-			(!prevState.showDriveSelector && this.state.showDriveSelector) ||
-			(!prevState.showURLSelector && this.state.showURLSelector) ||
-			(!prevState.showImageDetails && this.state.showImageDetails) ||
-			(!prevState.imageSelectorOpen && this.state.imageSelectorOpen)
-		) {
-			this.props.hideAnalyticsAlert();
-		}
-	}
-
 	private async onSelectImage(_event: IpcRendererEvent, imagePath: string) {
 		this.setState({ imageLoading: true });
 		await this.selectSource(
@@ -393,7 +199,6 @@ export class SourceSelector extends React.Component<
 
 	private reselectSource() {
 		selectionState.deselectImage();
-		this.props.hideAnalyticsAlert();
 	}
 
 	private selectSource(
@@ -530,15 +335,9 @@ export class SourceSelector extends React.Component<
 		}
 	}
 
-	private openURLSelector() {
+	private openHexOSDownload() {
 		this.setState({
-			showURLSelector: true,
-		});
-	}
-
-	private openDriveSelector() {
-		this.setState({
-			showDriveSelector: true,
+			showHexOSDownload: true,
 		});
 	}
 
@@ -562,30 +361,16 @@ export class SourceSelector extends React.Component<
 		this.setState({ defaultFlowActive });
 	}
 
-	private closeModal() {
-		this.setState({
-			showDriveSelector: false,
-		});
-	}
-
 	// TODO add a visual change when dragging a file over the selector
 	public render() {
 		const { flashing } = this.props;
-		const {
-			showImageDetails,
-			showURLSelector,
-			showDriveSelector,
-			imageLoading,
-		} = this.state;
+		const { showImageDetails, imageLoading } = this.state;
 		const selectionImage = selectionState.getImage();
 		let image =
 			selectionImage !== undefined ? selectionImage : ({} as SourceMetadata);
 
 		image = image.drive ?? image;
 
-		let cancelURLSelection = () => {
-			// noop
-		};
 		image.name = image.description || image.name;
 		const imagePath = image.path || image.displayName || '';
 		const imageBasename = path.basename(imagePath);
@@ -622,7 +407,10 @@ export class SourceSelector extends React.Component<
 								tooltip={imageName || imageBasename}
 							>
 								<Spinner show={imageLoading}>
-									{middleEllipsis(imageName || imageBasename, 20)}
+									{middleEllipsis(
+										prettyHexOSImageName(imageName || imageBasename),
+										20,
+									)}
 								</Spinner>
 							</StepNameButton>
 							{!flashing && !imageLoading && (
@@ -641,33 +429,23 @@ export class SourceSelector extends React.Component<
 					) : (
 						<>
 							<FlowSelector
-								disabled={this.state.imageSelectorOpen}
 								primary={this.state.defaultFlowActive}
+								key="Download HexOS"
+								flow={{
+									onClick: () => this.openHexOSDownload(),
+									label: i18next.t('hexos.download'),
+									icon: <DownloadSvg height="1em" fill="currentColor" />,
+								}}
+								onMouseEnter={() => this.setDefaultFlowActive(false)}
+								onMouseLeave={() => this.setDefaultFlowActive(true)}
+							/>
+							<FlowSelector
+								disabled={this.state.imageSelectorOpen}
 								key="Flash from file"
 								flow={{
 									onClick: () => this.openImageSelector(),
 									label: i18next.t('source.fromFile'),
 									icon: <FileSvg height="1em" fill="currentColor" />,
-								}}
-								onMouseEnter={() => this.setDefaultFlowActive(false)}
-								onMouseLeave={() => this.setDefaultFlowActive(true)}
-							/>
-							<FlowSelector
-								key="Flash from URL"
-								flow={{
-									onClick: () => this.openURLSelector(),
-									label: i18next.t('source.fromURL'),
-									icon: <LinkSvg height="1em" fill="currentColor" />,
-								}}
-								onMouseEnter={() => this.setDefaultFlowActive(false)}
-								onMouseLeave={() => this.setDefaultFlowActive(true)}
-							/>
-							<FlowSelector
-								key="Clone drive"
-								flow={{
-									onClick: () => this.openDriveSelector(),
-									label: i18next.t('source.clone'),
-									icon: <CopySvg height="1em" fill="currentColor" />,
 								}}
 								onMouseEnter={() => this.setDefaultFlowActive(false)}
 								onMouseLeave={() => this.setDefaultFlowActive(true)}
@@ -721,64 +499,22 @@ export class SourceSelector extends React.Component<
 					</SmallModal>
 				)}
 
-				{showURLSelector && (
-					<URLSelector
+				{this.state.showHexOSDownload && (
+					<HexOSDownload
 						cancel={() => {
-							cancelURLSelection();
-							this.setState({
-								showURLSelector: false,
-							});
+							this.setState({ showHexOSDownload: false });
 						}}
-						done={async (imageURL: string, auth?: Authentication) => {
-							// Avoid analytics and selection state changes
-							// if no file was resolved from the dialog.
-							if (imageURL) {
-								let promise;
-								({ promise, cancel: cancelURLSelection } = this.selectSource(
-									imageURL,
-									'Http',
-									auth,
-								));
-								await promise;
-							}
+						done={async (imagePath: string) => {
 							this.setState({
-								showURLSelector: false,
+								showHexOSDownload: false,
+								imageLoading: true,
 							});
+							await this.selectSource(imagePath, 'File').promise;
+							this.setState({ imageLoading: false });
 						}}
 					/>
 				)}
 
-				{showDriveSelector && (
-					<DriveSelector
-						write={false}
-						multipleSelection={false}
-						titleLabel={i18next.t('source.selectSource')}
-						emptyListLabel={i18next.t('source.plugSource')}
-						emptyListIcon={<SrcSvg width="40px" />}
-						cancel={(originalList) => {
-							if (originalList.length) {
-								const originalSource = originalList[0];
-								if (selectionImage?.drive?.device !== originalSource.device) {
-									this.selectSource(originalSource, 'BlockDevice');
-								}
-							} else {
-								selectionState.deselectImage();
-							}
-							this.closeModal();
-						}}
-						done={() => this.closeModal()}
-						onSelect={(drive) => {
-							if (drive) {
-								if (
-									selectionState.getImage()?.drive?.device === drive?.device
-								) {
-									return selectionState.deselectImage();
-								}
-								this.selectSource(drive, 'BlockDevice');
-							}
-						}}
-					/>
-				)}
 			</>
 		);
 	}

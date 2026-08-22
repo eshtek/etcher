@@ -152,7 +152,7 @@ export function FlashResults({
 					alignItems="center"
 					mt="50px"
 					mb="32px"
-					color="#7e8085"
+					color="#b3b8bd"
 					flexDirection="column"
 				>
 					<FlashSvg width="40px" height="40px" className="disabled" />
@@ -168,9 +168,9 @@ export function FlashResults({
 						? i18next.t('flash.flashFailed')
 						: i18next.t('flash.flashCompleted')}
 				</Txt>
-				{skip ? <Txt color="#7e8085">{i18next.t('flash.skip')}</Txt> : null}
+				{skip ? <Txt color="#b3b8bd">{i18next.t('flash.skip')}</Txt> : null}
 			</Flex>
-			<Flex flexDirection="column" color="#7e8085">
+			<Flex flexDirection="column" color="#b3b8bd">
 				{results.devices.successful !== 0 ? (
 					<Flex alignItems="center">
 						<CircleSvg width="14px" fill="#1ac135" />

@@ -1,11 +1,11 @@
 {
-  "name": "balena-etcher",
+  "name": "hexos-imager",
   "version": "2.1.6",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "balena-etcher",
+      "name": "hexos-imager",
       "version": "2.1.6",
       "license": "Apache-2.0",
       "dependencies": {
@@ -3505,10 +3505,11 @@
       }
     },
     "node_modules/@electron/windows-sign": {
-      "version": "1.1.2",
-      "resolved": "https://registry.npmjs.org/@electron/windows-sign/-/windows-sign-1.1.2.tgz",
-      "integrity": "sha512-eXEiZjDtxW3QORCWfRUarANPRTlH9B6At4jqBZJ0NzokSGutXQUVLPA6WmGpIhDW6w2yCMdHW1EJd1HrXtU5sg==",
+      "version": "1.2.2",
+      "resolved": "https://registry.npmjs.org/@electron/windows-sign/-/windows-sign-1.2.2.tgz",
+      "integrity": "sha512-dfZeox66AvdPtb2lD8OsIIQh12Tp0GNCRUDfBHIKGpbmopZto2/A8nSpYYLoedPIHpqkeblZ/k8OV0Gy7PYuyQ==",
       "dev": true,
+      "license": "BSD-2-Clause",
       "dependencies": {
         "cross-dirname": "^0.1.0",
         "debug": "^4.3.4",
