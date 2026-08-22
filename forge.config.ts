@@ -76,7 +76,10 @@ const config: ForgeConfig = {
 		new MakerZIP(),
 		new MakerSquirrel({
 			setupIcon: 'assets/icon.ico',
-			loadingGif: 'assets/icon.png',
+			// Squirrel shows this at its native size while installing, so the
+			// 1024x1024 app icon filled most of the screen for a couple of
+			// seconds. This is the same mark on a 640x480 canvas.
+			loadingGif: 'assets/install-splash.png',
 			// Programs and Features reads this one, and electron-winstaller
 			// defaults it to Electron's own icon — which is why the entry
 			// showed a stray Electron logo. It has to be a URL rather than a
