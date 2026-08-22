@@ -109,13 +109,67 @@ jobs:
       - name: Verify signatures
         shell: pwsh
         run: |
-          $failed = $false
-          Get-ChildItem -Recurse out\make -Include *.exe | ForEach-Object {
-            Write-Host "=== $($_.FullName) ==="
-            & C:\signing\signtool\signtool.exe verify /pa /v $_.FullName
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          # Check the Squirrel installer AND the packaged app. Verifying only
+          # out\make covers the installer but not "HexOS Imager.exe", which is
+          # the binary users actually run once installed.
+          $targets = @()
+          $targets += Get-ChildItem -Path out\make -Recurse -Include *.exe -File
+          Get-ChildItem -Path out -Directory -Filter '*-win32-*' | ForEach-Object {
+            $targets += Get-ChildItem -Path $_.FullName -Filter '*.exe' -File
           }
-          if ($failed) { throw 'One or more artifacts failed signature verification' }
+          if ($targets.Count -lt 2) {
+            throw "expected the installer and the packaged app, found $($targets.Count)"
+          }
+          $failed = @()
+          foreach ($f in $targets) {
+            Write-Host "=== $($f.FullName) ==="
+            & C:\signing\signtool\signtool.exe verify /pa /v $f.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $f.FullName }
+          }
+          if ($failed.Count -gt 0) {
+            throw "signature verification failed for: $($failed -join '; ')"
+          }
+
+      # Packaging succeeding does not mean the app starts: the pkg sidecar
+      # embeds its own Node and segfaults on startup if native modules were
+      # built against a different major version. Launching it is what catches
+      # that. The screenshot is for eyeballing a blank/crashed renderer, which
+      # a live process alone would not reveal.
+      - name: Smoke launch and screenshot
+        shell: pwsh
+        run: |
+          $appDir = Get-ChildItem -Path out -Directory -Filter '*-win32-*' | Select-Object -First 1
+          if (-not $appDir) { throw 'no packaged app directory under out\' }
+          $exe = Get-ChildItem -Path $appDir.FullName -Filter '*.exe' -File | Select-Object -First 1
+          if (-not $exe) { throw "no executable in $($appDir.FullName)" }
+
+          Write-Host "launching $($exe.FullName)"
+          $proc = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 30
+          if ($proc.HasExited) {
+            throw "app exited during startup with code $($proc.ExitCode)"
+          }
+
+          New-Item -ItemType Directory -Force -Path smoke | Out-Null
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+          $gfx.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $bmp.Save("$PWD\smoke\windows-x64-launch.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          $gfx.Dispose(); $bmp.Dispose()
+
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          Write-Host 'app survived 30s and was screenshotted'
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-windows-x64
+          path: smoke/
+          if-no-files-found: warn
+          retention-days: 14
 
       - uses: actions/upload-artifact@v4
         with:
@@ -189,6 +243,31 @@ jobs:
           XCODE_APP_LOADER_EMAIL: ${{ secrets.XCODE_APP_LOADER_EMAIL }}
           XCODE_APP_LOADER_PASSWORD: ${{ secrets.XCODE_APP_LOADER_PASSWORD }}
           XCODE_APP_LOADER_TEAM_ID: ${{ secrets.XCODE_APP_LOADER_TEAM_ID }}
+
+      # macos-14 runners are arm64 and have no Rosetta, so only the native
+      # slice can actually be launched here.
+      - name: Smoke launch and screenshot
+        if: matrix.arch == 'arm64'
+        run: |
+          APP=$(find out -maxdepth 2 -name '*.app' -type d | head -1)
+          [ -n "$APP" ] || { echo 'no .app found under out/'; exit 1; }
+          echo "launching $APP"
+          open "$APP"
+          sleep 30
+          pgrep -f 'HexOS Imager' >/dev/null || { echo 'app not running after 30s'; exit 1; }
+          mkdir -p smoke
+          screencapture -x "smoke/macos-${{ matrix.arch }}-launch.png"
+          osascript -e 'quit app "HexOS Imager"' || true
+          echo 'app survived 30s and was screenshotted'
+
+      - name: Upload smoke screenshot
+        if: always() && matrix.arch == 'arm64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-macos-${{ matrix.arch }}
+          path: smoke/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify notarization
         run: |

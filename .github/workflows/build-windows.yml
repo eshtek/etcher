@@ -42,6 +42,47 @@ jobs:
         # When Azure Trusted Signing lands, set NODE_ENV=production here
         # and provide the signing env vars as repository secrets.
 
+      # Packaging succeeding does not mean the app starts: the pkg sidecar
+      # embeds its own Node and segfaults on startup if native modules were
+      # built against a different major version. Launching it is what catches
+      # that. The screenshot is for eyeballing a blank/crashed renderer, which
+      # a live process alone would not reveal.
+      - name: Smoke launch and screenshot
+        shell: pwsh
+        run: |
+          $appDir = Get-ChildItem -Path out -Directory -Filter '*-win32-*' | Select-Object -First 1
+          if (-not $appDir) { throw 'no packaged app directory under out\' }
+          $exe = Get-ChildItem -Path $appDir.FullName -Filter '*.exe' -File | Select-Object -First 1
+          if (-not $exe) { throw "no executable in $($appDir.FullName)" }
+
+          Write-Host "launching $($exe.FullName)"
+          $proc = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 30
+          if ($proc.HasExited) {
+            throw "app exited during startup with code $($proc.ExitCode)"
+          }
+
+          New-Item -ItemType Directory -Force -Path smoke | Out-Null
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+          $gfx.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $bmp.Save("$PWD\smoke\windows-x64-launch.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          $gfx.Dispose(); $bmp.Dispose()
+
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          Write-Host 'app survived 30s and was screenshotted'
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-windows-x64
+          path: smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: List artifacts
         run: Get-ChildItem -Recurse out/make | Select-Object FullName
         shell: pwsh
