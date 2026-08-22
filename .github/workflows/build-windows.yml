@@ -12,7 +12,10 @@ on:
 jobs:
   build:
     name: Windows x64
-    runs-on: windows-latest
+    # windows-latest resolves to Server 2025, which ships Visual Studio 18.
+    # @electron/node-gyp matches VS by a hardcoded list of version years and
+    # rejects 18 as unsupported, so mountutils fails to build during npm ci.
+    runs-on: windows-2022
     steps:
       - name: Enable long paths in git
         run: git config --global core.longpaths true
