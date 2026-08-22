@@ -133,22 +133,48 @@ spawnChildAndConnect({
 		// start scanning
 		emit('scan', {});
 
+		// When reading an image fails, the sidecar reports it on a separate
+		// `fail` channel rather than answering `sourceMetadata`. Nothing was
+		// listening for it, so the router hit its "Unknown message type" branch
+		// and threw inside the socket callback, where the error went nowhere —
+		// turning a perfectly reportable failure into an indefinite hang.
+		// Route it to whichever metadata request is in flight.
+		let failPendingMetadata: ((error: Error) => void) | undefined;
+
+		registerHandler('fail', (data: any) => {
+			const error =
+				data instanceof Error
+					? data
+					: new Error(
+							data?.message ?? `The image reader failed: ${JSON.stringify(data)}`,
+						);
+			if (failPendingMetadata !== undefined) {
+				failPendingMetadata(error);
+			} else {
+				console.error('Sidecar reported a failure with no request in flight:', error);
+			}
+		});
+
 		// make the sourceMetada awaitable to be used on source selection
 		//
-		// The sidecar can accept a sourceMetadata request and then never answer
-		// — it dies mid-read, or something outside the app blocks it from
-		// reading the image. Without a deadline this promise stays pending
-		// forever, and the caller's error handling never runs, so the UI sits
-		// on a spinner or a disabled button with nothing to report.
-		//
-		// The budget is generous because metadata for a compressed image can
+		// The deadline covers the other way this stalls: the sidecar accepting
+		// a request and going silent, without even a `fail` — it dies mid-read,
+		// or something outside the app blocks it from reading the image. The
+		// budget is generous because metadata for a compressed image can
 		// require scanning the whole archive; it exists to bound a hang, not to
 		// police slow reads.
 		requestMetadata = async (params: any): Promise<SourceMetadata> => {
 			emit('sourceMetadata', JSON.stringify(params));
 
 			return new Promise((resolve, reject) => {
-				const timeout = setTimeout(() => {
+				let timeout: ReturnType<typeof setTimeout>;
+				const settle = () => {
+					clearTimeout(timeout);
+					failPendingMetadata = undefined;
+				};
+
+				timeout = setTimeout(() => {
+					settle();
 					reject(
 						new Error(
 							`No response from the image reader after ${
@@ -158,8 +184,13 @@ spawnChildAndConnect({
 					);
 				}, SOURCE_METADATA_TIMEOUT_MS);
 
+				failPendingMetadata = (error: Error) => {
+					settle();
+					reject(error);
+				};
+
 				registerHandler('sourceMetadata', (data: any) => {
-					clearTimeout(timeout);
+					settle();
 					resolve(JSON.parse(data));
 				});
 			});
