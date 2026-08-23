@@ -188,6 +188,31 @@ const PROGRESS_INTERVAL_MS = 250;
  */
 const STREAM_CHUNK_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Close a stream and wait until the OS handle is actually released.
+ *
+ * Windows refuses to unlink or re-create a file while a handle is still open,
+ * so abandoning the write stream on cancel left the .part file locked: the
+ * cleanup unlink failed silently and the next attempt failed outright with
+ * "EPERM: operation not permitted, open '...iso.part'". destroy() alone is not
+ * enough — it returns before 'close' fires.
+ */
+function closeStream(stream: {
+	destroy: () => void;
+	once: (event: string, listener: () => void) => void;
+	closed?: boolean;
+	destroyed?: boolean;
+}): Promise<void> {
+	return new Promise((resolve) => {
+		if (stream.closed) {
+			resolve();
+			return;
+		}
+		stream.once('close', () => resolve());
+		stream.destroy();
+	});
+}
+
 function throttleProgress(onProgress: ProgressCallback): {
 	report: ProgressCallback;
 	flush: () => void;
@@ -228,24 +253,28 @@ async function hashFile(
 	});
 	const { report, flush } = throttleProgress(onProgress);
 	let transferred = 0;
-	return await new Promise<string>((resolve, reject) => {
-		const onAbort = () => {
-			stream.destroy();
-			reject(new Error('Aborted'));
-		};
-		abortSignal?.addEventListener('abort', onAbort, { once: true });
-		stream.on('data', (chunk) => {
-			hash.update(chunk);
-			transferred += chunk.length;
-			report({ phase: 'verifying', transferred, total, speed: 0 });
+	try {
+		return await new Promise<string>((resolve, reject) => {
+			const onAbort = () => reject(new Error('Aborted'));
+			abortSignal?.addEventListener('abort', onAbort, { once: true });
+			stream.on('data', (chunk) => {
+				hash.update(chunk);
+				transferred += chunk.length;
+				report({ phase: 'verifying', transferred, total, speed: 0 });
+			});
+			stream.on('error', reject);
+			stream.on('end', () => {
+				abortSignal?.removeEventListener('abort', onAbort);
+				flush();
+				resolve(hash.digest('hex'));
+			});
 		});
-		stream.on('error', reject);
-		stream.on('end', () => {
-			abortSignal?.removeEventListener('abort', onAbort);
-			flush();
-			resolve(hash.digest('hex'));
-		});
-	});
+	} finally {
+		// A read handle left open on the destination blocks the rename that
+		// puts a freshly downloaded file into place, so release it here rather
+		// than leaving it to the abort path.
+		await closeStream(stream);
+	}
 }
 
 /**
@@ -288,32 +317,40 @@ async function downloadFromUrl(
 	let lastTime = Date.now();
 	let lastTransferred = 0;
 	let speed = 0;
-	await new Promise<void>((resolve, reject) => {
-		response.on('data', (chunk: Buffer) => {
-			hash.update(chunk);
-			transferred += chunk.length;
-			const now = Date.now();
-			const elapsed = now - lastTime;
-			if (elapsed >= 1000) {
-				speed = ((transferred - lastTransferred) / elapsed) * 1000;
-				lastTime = now;
-				lastTransferred = transferred;
-			}
-			report({
-				phase: 'downloading',
-				transferred,
-				total: entry.size,
-				speed,
+	try {
+		await new Promise<void>((resolve, reject) => {
+			response.on('data', (chunk: Buffer) => {
+				hash.update(chunk);
+				transferred += chunk.length;
+				const now = Date.now();
+				const elapsed = now - lastTime;
+				if (elapsed >= 1000) {
+					speed = ((transferred - lastTransferred) / elapsed) * 1000;
+					lastTime = now;
+					lastTransferred = transferred;
+				}
+				report({
+					phase: 'downloading',
+					transferred,
+					total: entry.size,
+					speed,
+				});
 			});
+			response.on('error', reject);
+			output.on('error', reject);
+			output.on('finish', () => {
+				flush();
+				resolve();
+			});
+			response.pipe(output);
 		});
-		response.on('error', reject);
-		output.on('error', reject);
-		output.on('finish', () => {
-			flush();
-			resolve();
-		});
-		response.pipe(output);
-	});
+	} finally {
+		// Runs on cancellation too: the abort destroys the request, but the
+		// file handle is ours to release. Whoever cleans up the .part file
+		// next needs it closed first.
+		response.destroy();
+		await closeStream(output);
+	}
 	return hash.digest('hex');
 }
 
