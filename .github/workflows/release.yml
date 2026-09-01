@@ -258,6 +258,18 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
           security find-identity -v -p codesigning "$KEYCHAIN"
 
+      # notarytool takes an app-specific password on the command line, where it
+      # is visible to anything that can read a process list. An App Store
+      # Connect API key is read from a file, so write it out and let
+      # forge.config.ts pick the key path over the password path.
+      - name: Stage notarization API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/notary"
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/notary/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/notary/AuthKey.p8"
+
       - name: Install dependencies
         run: npm ci
         env:
@@ -267,9 +279,9 @@ jobs:
         run: npm run make -- --arch=${{ matrix.arch }}
         env:
           NODE_ENV: production
-          XCODE_APP_LOADER_EMAIL: ${{ secrets.XCODE_APP_LOADER_EMAIL }}
-          XCODE_APP_LOADER_PASSWORD: ${{ secrets.XCODE_APP_LOADER_PASSWORD }}
-          XCODE_APP_LOADER_TEAM_ID: ${{ secrets.XCODE_APP_LOADER_TEAM_ID }}
+          APPLE_API_KEY: ${{ runner.temp }}/notary/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       # macos-14 runners are arm64 and have no Rosetta, so only the native
       # slice can actually be launched here.
@@ -310,6 +322,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Clean up keychain
+      - name: Clean up keychain and notarization key
         if: always()
-        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/notary/AuthKey.p8" || true

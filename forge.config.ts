@@ -20,12 +20,25 @@ const osxSigningConfig: any = {};
 let winSigningConfig: any = {};
 
 if (process.env.NODE_ENV === 'production') {
-	osxSigningConfig.osxNotarize = {
-		tool: 'notarytool',
-		appleId: process.env.XCODE_APP_LOADER_EMAIL,
-		appleIdPassword: process.env.XCODE_APP_LOADER_PASSWORD,
-		teamId: process.env.XCODE_APP_LOADER_TEAM_ID,
-	};
+	// Prefer an App Store Connect API key. notarytool takes an app-specific
+	// password as a command-line argument, which puts it in `ps` output for
+	// every user on the machine and anywhere else a process list is captured.
+	// The API key is read from a file instead, so the secret never appears in
+	// argv. The password path stays as a fallback for machines that only have
+	// one set up.
+	osxSigningConfig.osxNotarize = process.env.APPLE_API_KEY
+		? {
+				tool: 'notarytool',
+				appleApiKey: process.env.APPLE_API_KEY,
+				appleApiKeyId: process.env.APPLE_API_KEY_ID,
+				appleApiIssuer: process.env.APPLE_API_ISSUER,
+			}
+		: {
+				tool: 'notarytool',
+				appleId: process.env.XCODE_APP_LOADER_EMAIL,
+				appleIdPassword: process.env.XCODE_APP_LOADER_PASSWORD,
+				teamId: process.env.XCODE_APP_LOADER_TEAM_ID,
+			};
 
 	// Azure Artifact Signing: the key never leaves Microsoft's HSM, so signtool
 	// is driven through the Azure dlib rather than a local certificate. Every
