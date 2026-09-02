@@ -7,7 +7,8 @@ import { MakerDMG } from '@electron-forge/maker-dmg';
 // import { MakerAppImage } from '@reforged/maker-appimage';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
-import { exec } from 'child_process';
+import { notarize } from '@electron/notarize';
+import { exec, execFileSync } from 'child_process';
 
 import { resolve } from 'path';
 
@@ -16,29 +17,35 @@ import * as sidecar from './forge.sidecar';
 
 import { hostDependencies, productDescription } from './package.json';
 
-const osxSigningConfig: any = {};
-let winSigningConfig: any = {};
-
-if (process.env.NODE_ENV === 'production') {
-	// Prefer an App Store Connect API key. notarytool takes an app-specific
-	// password as a command-line argument, which puts it in `ps` output for
-	// every user on the machine and anywhere else a process list is captured.
-	// The API key is read from a file instead, so the secret never appears in
-	// argv. The password path stays as a fallback for machines that only have
-	// one set up.
-	osxSigningConfig.osxNotarize = process.env.APPLE_API_KEY
+/**
+ * Prefer an App Store Connect API key. notarytool takes an app-specific
+ * password as a command-line argument, which puts it in `ps` output for every
+ * user on the machine and anywhere else a process list is captured. The API
+ * key is read from a file instead, so the secret never appears in argv. The
+ * password path stays as a fallback for machines that only have one set up.
+ *
+ * Shared by the app notarization Forge runs itself and the DMG notarization
+ * in the postMake hook below.
+ */
+function notarizeCredentials(): Record<string, string | undefined> {
+	return process.env.APPLE_API_KEY
 		? {
-				tool: 'notarytool',
 				appleApiKey: process.env.APPLE_API_KEY,
 				appleApiKeyId: process.env.APPLE_API_KEY_ID,
 				appleApiIssuer: process.env.APPLE_API_ISSUER,
 			}
 		: {
-				tool: 'notarytool',
 				appleId: process.env.XCODE_APP_LOADER_EMAIL,
 				appleIdPassword: process.env.XCODE_APP_LOADER_PASSWORD,
 				teamId: process.env.XCODE_APP_LOADER_TEAM_ID,
 			};
+}
+
+const osxSigningConfig: any = {};
+let winSigningConfig: any = {};
+
+if (process.env.NODE_ENV === 'production') {
+	osxSigningConfig.osxNotarize = { tool: 'notarytool', ...notarizeCredentials() };
 
 	// Azure Artifact Signing: the key never leaves Microsoft's HSM, so signtool
 	// is driven through the Azure dlib rather than a local certificate. Every
@@ -185,6 +192,42 @@ const config: ForgeConfig = {
 		new sidecar.SidecarPlugin(),
 	],
 	hooks: {
+		// MakerDMG signs nothing. The .app inside the image is notarized and
+		// stapled, so Gatekeeper accepts it on launch and users see no prompt —
+		// but the .dmg itself carried no signature and no ticket, so `spctl`
+		// reported "no usable signature" on the download and `stapler validate`
+		// failed on it. Sign, notarize and staple the container too.
+		postMake: async (_forgeConfig, makeResults) => {
+			if (
+				process.env.NODE_ENV !== 'production' ||
+				process.platform !== 'darwin'
+			) {
+				return makeResults;
+			}
+			for (const result of makeResults) {
+				for (const artifact of result.artifacts) {
+					if (!artifact.endsWith('.dmg')) {
+						continue;
+					}
+					// codesign accepts a partial identity name when it is unique;
+					// there is one Developer ID Application cert in the keychain.
+					execFileSync(
+						'codesign',
+						['--sign', 'Developer ID Application', '--timestamp', artifact],
+						{ stdio: 'inherit' },
+					);
+					await notarize({
+						tool: 'notarytool',
+						appPath: artifact,
+						...notarizeCredentials(),
+					} as any);
+					execFileSync('xcrun', ['stapler', 'staple', artifact], {
+						stdio: 'inherit',
+					});
+				}
+			}
+			return makeResults;
+		},
 		postPackage: async (_forgeConfig, options) => {
 			if (options.platform === 'linux') {
 				// symlink the binary under the old balenaEtcher name to ensure compatibility with the wdio suite

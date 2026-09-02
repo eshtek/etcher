@@ -321,12 +321,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # `find -exec` discards the exit status of the command it runs, so the
+      # previous version of this step reported success on an unstapled DMG.
+      # Every check here now fails the job.
       - name: Verify notarization
         run: |
+          set -euo pipefail
           APP=$(find out -name 'HexOS Imager.app' -maxdepth 4 | head -1)
+          [ -n "$APP" ] || { echo 'no .app produced'; exit 1; }
           codesign -dv --verbose=2 "$APP"
-          spctl -a -vv "$APP"
-          find out/make -name '*.dmg' -exec xcrun stapler validate {} \;
+          spctl -a -vv -t exec "$APP" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID'
+          xcrun stapler validate "$APP"
+
+          DMGS=$(find out/make -name '*.dmg')
+          [ -n "$DMGS" ] || { echo 'no .dmg produced'; exit 1; }
+          while IFS= read -r dmg; do
+            echo "=== $dmg ==="
+            codesign -dv --verbose=2 "$dmg"
+            spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID'
+            xcrun stapler validate "$dmg"
+          done <<< "$DMGS"
+          echo 'app and dmg are both signed, notarized and stapled'
 
       - uses: actions/upload-artifact@v4
         with:
