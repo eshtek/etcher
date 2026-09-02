@@ -367,17 +367,31 @@ jobs:
         with:
           path: artifacts
 
+      # Forge names artifacts from package.json's version, which stays at the
+      # upstream Etcher version so the binary's own semver is never a
+      # pre-release. The date lives in the tag as build metadata
+      # (v2.1.6+20260902), and the user-facing files are renamed here to the
+      # dash form (v2.1.6-20260902) since `+` is awkward in filenames and URLs.
+      # The .nupkg and RELEASES are left exactly as Squirrel wrote them: its
+      # updater looks them up by name.
       - name: Collect release assets
         run: |
           set -euo pipefail
           mkdir -p release
-          # Windows: the Squirrel installer plus the files its updater needs.
-          cp artifacts/hexos-imager-windows-x64/squirrel.windows/x64/*.exe   release/
-          cp artifacts/hexos-imager-windows-x64/squirrel.windows/x64/*.nupkg release/
-          cp artifacts/hexos-imager-windows-x64/squirrel.windows/x64/RELEASES release/
-          # macOS: one DMG per architecture.
-          cp artifacts/hexos-imager-macos-arm64/*.dmg release/
-          cp artifacts/hexos-imager-macos-x64/*.dmg   release/
+          LABEL="${GITHUB_REF_NAME#v}"      # v2.1.6+20260902 -> 2.1.6+20260902
+          LABEL="${LABEL//+/-}"             #                -> 2.1.6-20260902
+          echo "asset label: $LABEL"
+
+          WIN=artifacts/hexos-imager-windows-x64/squirrel.windows/x64
+          cp "$WIN"/*.nupkg "$WIN"/RELEASES release/
+          cp "$WIN"/*Setup.exe "release/HexOS-Imager-v${LABEL}-Setup.exe"
+
+          for dmg in artifacts/hexos-imager-macos-*/*.dmg; do
+            base=$(basename "$dmg" .dmg)
+            arch="${base##*-}"              # HexOS Imager-2.1.6-arm64 -> arm64
+            cp "$dmg" "release/HexOS-Imager-v${LABEL}-${arch}.dmg"
+          done
+
           (cd release && shasum -a 256 * > SHA256SUMS.txt)
           ls -la release
 
