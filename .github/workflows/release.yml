@@ -279,10 +279,14 @@ jobs:
           printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/notary/AuthKey.p8"
           chmod 600 "$RUNNER_TEMP/notary/AuthKey.p8"
 
+      # No npm_config_arch here. It applies to every native module, including
+      # build tooling like macos-alias that appdmg loads on the (arm64) host,
+      # which then fails with "incompatible architecture (have 'x86_64', need
+      # 'arm64')" on the x64 job. The shipped natives are cross-built for the
+      # target separately: forge.sidecar.ts rebuilds mountutils with --arch and
+      # the packager rebuilds Electron's modules for --arch.
       - name: Install dependencies
         run: npm ci
-        env:
-          npm_config_arch: ${{ matrix.arch }}
 
       - name: Build, sign and notarize
         run: npm run make -- --arch=${{ matrix.arch }}
