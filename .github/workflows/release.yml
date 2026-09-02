@@ -35,6 +35,9 @@ jobs:
     # @electron/node-gyp matches VS by a hardcoded list of version years and
     # rejects 18 as unsupported, so mountutils fails to build during npm ci.
     runs-on: windows-2022
+    # Well clear of the ~11 minutes this job takes; here so a hang fails in a
+    # readable amount of time rather than burning the six hour default.
+    timeout-minutes: 60
     environment: release
     permissions:
       id-token: write # required for the OIDC token exchange with Entra
@@ -224,6 +227,12 @@ jobs:
     # variable APPLE_SIGNING_ENABLED to 'true' to arm these jobs.
     if: vars.APPLE_SIGNING_ENABLED == 'true'
     runs-on: macos-14
+    # Apple's notary queue is not bounded by anything we control: a first
+    # submission sat In Progress for five and a half hours on 2026-09-01 with
+    # the developer system status page green throughout. GitHub's default job
+    # timeout is 360 minutes, which that run would have come within half an
+    # hour of hitting, killing the job mid-notarization for no good reason.
+    timeout-minutes: 720
     environment: release
     strategy:
       fail-fast: false
