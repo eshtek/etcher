@@ -53,12 +53,31 @@ function addWebpackDefine(
 	return config;
 }
 
+/**
+ * Node major embedded in the sidecar by pkg. The native modules the sidecar
+ * carries are rebuilt below under whichever Node runs this script, and they
+ * only load if the two match.
+ */
+const SIDECAR_NODE_MAJOR = 20;
+
 function build(
 	sourcesDir: string,
 	buildForArchs: string,
 	binDir: string,
 	binName: string,
 ) {
+	// A mismatch here builds without complaint and fails at runtime instead:
+	// mountutils rebuilt under Node 22 reported NODE_MODULE_VERSION 127 where
+	// the embedded Node 20 needs 115, and the sidecar only discovers that the
+	// first time it tries to unmount a drive. Refuse up front.
+	const hostMajor = parseInt(process.versions.node.split('.')[0], 10);
+	if (hostMajor !== SIDECAR_NODE_MAJOR) {
+		throw new Error(
+			`The sidecar embeds Node ${SIDECAR_NODE_MAJOR} but this build is running under Node ${process.versions.node}. ` +
+				`Native modules rebuilt now would not load inside it. Switch to Node ${SIDECAR_NODE_MAJOR} (see .nvmrc) and run npm ci.`,
+		);
+	}
+
 	const commands: Array<[string, string[], object?]> = [
 		['tsc', ['--project', 'tsconfig.sidecar.json', '--outDir', sourcesDir]],
 	];
@@ -93,7 +112,7 @@ function build(
 				// always build for host platform and node version
 				// https://github.com/vercel/pkg-fetch/releases
 				'--target',
-				`node20-${arch}`,
+				`node${SIDECAR_NODE_MAJOR}-${arch}`,
 				'--output',
 				binPath,
 			],
