@@ -439,22 +439,25 @@ jobs:
           LABEL="${LABEL//+/-}"             #                -> 2.1.6-20260902
           echo "asset label: $LABEL"
 
-          WIN=artifacts/hexos-imager-windows-x64/squirrel.windows/x64
-          cp "$WIN"/*.nupkg "$WIN"/RELEASES release/
-          cp "$WIN"/*Setup.exe "release/HexOS-Imager-v${LABEL}-Setup.exe"
+          # Artifacts keep their out/make subtree, so files sit at varying
+          # depths (the DMGs at the root, the deb/rpm under deb/<arch>/ and
+          # rpm/<arch>/). Locate everything with find rather than assuming.
+          one() { find "$1" -type f -name "$2" | head -1; }
 
-          for dmg in artifacts/hexos-imager-macos-*/*.dmg; do
-            base=$(basename "$dmg" .dmg)
-            arch="${base##*-}"              # HexOS Imager-2.1.6-arm64 -> arm64
-            cp "$dmg" "release/HexOS-Imager-v${LABEL}-${arch}.dmg"
+          WIN=artifacts/hexos-imager-windows-x64
+          cp "$(one "$WIN" '*.nupkg')" "$(one "$WIN" 'RELEASES')" release/
+          cp "$(one "$WIN" '*Setup.exe')" "release/HexOS-Imager-v${LABEL}-Setup.exe"
+
+          # Arch comes from the artifact directory name, not from Forge's file
+          # names, which use amd64/x86_64/aarch64 inconsistently.
+          for dir in artifacts/hexos-imager-macos-*; do
+            arch="${dir##*-}"
+            cp "$(one "$dir" '*.dmg')" "release/HexOS-Imager-v${LABEL}-${arch}.dmg"
           done
-
-          # Linux: take the arch from the artifact directory rather than from
-          # Forge's package names, which use amd64/x86_64/aarch64 inconsistently.
           for dir in artifacts/hexos-imager-linux-*; do
             arch="${dir##*-}"
-            cp "$dir"/*.deb "release/HexOS-Imager-v${LABEL}-${arch}.deb"
-            cp "$dir"/*.rpm "release/HexOS-Imager-v${LABEL}-${arch}.rpm"
+            cp "$(one "$dir" '*.deb')" "release/HexOS-Imager-v${LABEL}-${arch}.deb"
+            cp "$(one "$dir" '*.rpm')" "release/HexOS-Imager-v${LABEL}-${arch}.rpm"
           done
 
           (cd release && shasum -a 256 * > SHA256SUMS.txt)
