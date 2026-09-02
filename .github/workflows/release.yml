@@ -325,7 +325,12 @@ jobs:
           APP=$(find out -name 'HexOS Imager.app' -maxdepth 4 | head -1)
           [ -n "$APP" ] || { echo 'no .app produced'; exit 1; }
           codesign -dv --verbose=2 "$APP"
-          spctl -a -vv -t exec "$APP" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID'
+          # Capture, print, then grep. Piping through `tee | grep -q` races:
+          # grep -q closes its stdin on the first match, tee gets EPIPE on
+          # the remainder, and pipefail turns that into a failed step —
+          # which is exactly what happened on x64 while arm64 sailed through.
+          verdict=$(spctl -a -vv -t exec "$APP" 2>&1); echo "$verdict"
+          grep -q 'source=Notarized Developer ID' <<< "$verdict"
           xcrun stapler validate "$APP"
 
           DMGS=$(find out/make -name '*.dmg')
@@ -333,7 +338,8 @@ jobs:
           while IFS= read -r dmg; do
             echo "=== $dmg ==="
             codesign -dv --verbose=2 "$dmg"
-            spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 | tee /dev/stderr | grep -q 'source=Notarized Developer ID'
+            verdict=$(spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1); echo "$verdict"
+            grep -q 'source=Notarized Developer ID' <<< "$verdict"
             xcrun stapler validate "$dmg"
           done <<< "$DMGS"
           echo 'app and dmg are both signed, notarized and stapled'
