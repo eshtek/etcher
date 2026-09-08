@@ -1,12 +1,12 @@
 {
   "name": "hexos-imager",
-  "version": "2.1.7",
+  "version": "2.1.6",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "hexos-imager",
-      "version": "2.1.7",
+      "version": "2.1.6",
       "license": "Apache-2.0",
       "dependencies": {
         "@electron/remote": "^2.1.2",
