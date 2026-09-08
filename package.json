@@ -3,7 +3,7 @@
   "private": true,
   "displayName": "HexOS Imager",
   "productName": "HexOS Imager",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "packageType": "local",
   "main": ".webpack/main",
   "description": "Download, verify, and flash HexOS to USB drives, safely and easily.",
