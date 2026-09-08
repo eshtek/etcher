@@ -143,6 +143,7 @@ const translation = {
 		menu: {
 			edit: 'Edit',
 			view: 'View',
+			showLogFile: 'Show log file',
 			devTool: 'Toggle Developer Tools',
 			window: 'Window',
 			help: 'Help',

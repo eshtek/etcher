@@ -35,6 +35,7 @@ import { packageType, productName, version } from '../../package.json';
 import * as EXIT_CODES from '../shared/exit-codes';
 import * as settings from './app/models/settings';
 import { buildWindowMenu } from './menu';
+import { captureRendererConsole, initLogFile } from './log-file';
 import * as i18n from 'i18next';
 import * as SentryMain from '@sentry/electron/main';
 import { anonymizeSentryData } from './app/modules/analytics';
@@ -205,6 +206,7 @@ async function createMainWindow() {
 	mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
 	const page = mainWindow.webContents;
+	captureRendererConsole(page);
 	remoteMain.enable(page);
 
 	page.once('did-frame-finish-load', async () => {
@@ -267,6 +269,8 @@ async function main(): Promise<void> {
 			copyright: 'Copyright 2026 Eshtek Inc.',
 		});
 		await electron.app.whenReady();
+		// After whenReady: getPath('logs') is not resolvable before it.
+		initLogFile();
 		const window = await createMainWindow();
 		electron.app.on('second-instance', async (_event, argv) => {
 			if (window.isMinimized()) {

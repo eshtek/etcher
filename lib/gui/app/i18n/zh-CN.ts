@@ -73,6 +73,7 @@ const translation = {
 		menu: {
 			edit: '编辑',
 			view: '视图',
+			showLogFile: '显示日志文件',
 			devTool: '打开开发者工具',
 			window: '窗口',
 			help: '帮助',

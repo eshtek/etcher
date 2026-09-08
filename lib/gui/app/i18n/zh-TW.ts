@@ -136,6 +136,7 @@ const translation = {
 		menu: {
 			edit: '編輯',
 			view: '預覽',
+			showLogFile: '顯示日誌檔案',
 			devTool: '打開開發者工具',
 			window: '視窗',
 			help: '協助',

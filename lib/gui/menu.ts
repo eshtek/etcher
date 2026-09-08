@@ -15,6 +15,7 @@
  */
 
 import * as electron from 'electron';
+import { getLogFilePath, showLogFile } from './log-file';
 import { displayName } from '../../package.json';
 
 import * as i18next from 'i18next';
@@ -65,6 +66,11 @@ export function buildWindowMenu(window: electron.BrowserWindow) {
 			role: 'help',
 			label: i18next.t('menu.help'),
 			submenu: [
+				{
+					label: i18next.t('menu.showLogFile'),
+					enabled: getLogFilePath() !== undefined,
+					click: showLogFile,
+				},
 				{
 					label: i18next.t('menu.website'),
 					click() {
