@@ -21,7 +21,12 @@ import * as errors from '../../../shared/errors';
 
 const THREADS_PER_CPU = 16;
 const connectionRetryDelay = 1000;
-const connectionRetryAttempts = 10;
+// Ten attempts gave up after about ten seconds, which is inside the window a
+// first launch can still be in: the antivirus scan of a 68 MB executable on
+// its first execution runs to tens of seconds. The connection then failed
+// while the sidecar was still coming up, and no amount of waiting at the call
+// site could help because this loop had already stopped trying.
+const connectionRetryAttempts = 60;
 
 async function writerArgv(): Promise<string[]> {
 	let entryPoint = await window.etcher.getEtcherUtilPath();

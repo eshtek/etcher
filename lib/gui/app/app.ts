@@ -141,116 +141,188 @@ export let requestImageDownload:
 	  ) => Promise<{ path: string; alreadyExisted: boolean }>)
 	| undefined;
 
-// start the api and spawn the child process
-spawnChildAndConnect({
-	withPrivileges: false,
-})
-	.then(({ emit, registerHandler }) => {
-		// start scanning
-		emit('scan', {});
+/**
+ * How long callers wait for the sidecar before giving up.
+ *
+ * Startup is not instant and is not bounded by anything we control: the first
+ * launch after an install pays for the antivirus scan of a 68 MB executable,
+ * which can run to tens of seconds. Failing before that finishes produced two
+ * different unhelpful errors — an immediate "helper is not ready" from the
+ * download flow, and a TypeError from the flash-from-file flow, whose own
+ * ten-second budget expired and then called an undefined function.
+ *
+ * Deliberately longer than the connection layer's own budget in api.ts, which
+ * is sixty attempts a second apart plus the time each attempt takes. If this
+ * fired first it would replace that layer's specific failure with a generic
+ * timeout, every time.
+ */
+const SIDECAR_READY_TIMEOUT_MS = 90000;
 
-		// When reading an image fails, the sidecar reports it on a separate
-		// `fail` channel rather than answering `sourceMetadata`. Nothing was
-		// listening for it, so the router hit its "Unknown message type" branch
-		// and threw inside the socket callback, where the error went nowhere —
-		// turning a perfectly reportable failure into an indefinite hang.
-		// Route it to whichever metadata request is in flight.
-		let failPendingMetadata: ((error: Error) => void) | undefined;
+type SidecarState = 'connecting' | 'ready' | 'failed';
+let sidecarState: SidecarState = 'connecting';
 
-		registerHandler('fail', (data: any) => {
-			const error =
-				data instanceof Error
-					? data
-					: new Error(
-							data?.message ?? `The image reader failed: ${JSON.stringify(data)}`,
-						);
-			if (failPendingMetadata !== undefined) {
-				failPendingMetadata(error);
-			} else {
-				console.error('Sidecar reported a failure with no request in flight:', error);
-			}
-		});
+/** Resolves once the request helpers below are assigned. */
+let sidecarReady: Promise<void> = connectSidecar();
 
-		// make the sourceMetada awaitable to be used on source selection
-		//
-		// The deadline covers the other way this stalls: the sidecar accepting
-		// a request and going silent, without even a `fail` — it dies mid-read,
-		// or something outside the app blocks it from reading the image. The
-		// budget is generous because metadata for a compressed image can
-		// require scanning the whole archive; it exists to bound a hang, not to
-		// police slow reads.
-		requestMetadata = async (params: any): Promise<SourceMetadata> => {
-			emit('sourceMetadata', JSON.stringify(params));
+/**
+ * Wait for the sidecar, or reject with something a user can act on.
+ *
+ * Callers should await this instead of testing the helpers for undefined:
+ * during startup they are legitimately not assigned yet, and that is a state
+ * to wait through rather than an error.
+ */
+export async function waitForSidecar(
+	timeoutMs: number = SIDECAR_READY_TIMEOUT_MS,
+): Promise<void> {
+	// A failed attempt is not permanent. Reconnecting here means every retry —
+	// the download dialog's button, or simply picking a file again — gets a
+	// real second chance instead of replaying the first failure, which is what
+	// happened while the helper was assigned exactly once and never again.
+	if (sidecarState === 'failed') {
+		sidecarState = 'connecting';
+		sidecarReady = connectSidecar();
+	}
 
-			return new Promise((resolve, reject) => {
-				let timeout: ReturnType<typeof setTimeout>;
-				const settle = () => {
-					clearTimeout(timeout);
-					failPendingMetadata = undefined;
-				};
-
-				timeout = setTimeout(() => {
-					settle();
-					reject(
-						new Error(
-							`No response from the image reader after ${
-								SOURCE_METADATA_TIMEOUT_MS / 1000
-							}s.`,
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			sidecarReady,
+			new Promise<never>((_resolve, reject) => {
+				timer = setTimeout(
+					() =>
+						reject(
+							new Error(
+								`The imaging helper did not start within ${
+									timeoutMs / 1000
+								} seconds.`,
+							),
 						),
-					);
-				}, SOURCE_METADATA_TIMEOUT_MS);
+					timeoutMs,
+				);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
-				failPendingMetadata = (error: Error) => {
-					settle();
-					reject(error);
-				};
-
-				registerHandler('sourceMetadata', (data: any) => {
-					settle();
-					resolve(JSON.parse(data));
-				});
-			});
-		};
-
-		requestImageDownload = async (entry, destPath, onProgress, abortSignal) => {
-			return new Promise((resolve, reject) => {
-				const onAbort = () => emit('cancelDownload', {});
-				const settle = () => {
-					abortSignal?.removeEventListener('abort', onAbort);
-					registerHandler('downloadProgress', () => undefined);
-					registerHandler('downloadDone', () => undefined);
-					registerHandler('downloadError', () => undefined);
-				};
-
-				registerHandler('downloadProgress', (data: any) => {
-					onProgress(JSON.parse(data));
-				});
-				registerHandler('downloadDone', (data: any) => {
-					settle();
-					resolve(JSON.parse(data));
-				});
-				registerHandler('downloadError', (data: any) => {
-					settle();
-					const { name, message } = JSON.parse(data);
-					const error = new Error(message);
-					// Preserve the distinction the caller acts on: a checksum
-					// mismatch is a bad publish and must not be retried.
-					error.name = name ?? 'Error';
-					reject(error);
-				});
-
-				abortSignal?.addEventListener('abort', onAbort, { once: true });
-				emit('downloadImage', JSON.stringify({ entry, destPath }));
-			});
-		};
-
-		registerHandler('drives', (data: any) => {
-			setDrives(JSON.parse(data));
-		});
+// start the api and spawn the child process
+function connectSidecar(): Promise<void> {
+	return spawnChildAndConnect({
+		withPrivileges: false,
 	})
-	.catch((error: any) => {
-		throw new Error(`Failed to start the flasher process. error: ${error}`);
-	});
+		.then(({ emit, registerHandler }) => {
+			// start scanning
+			emit('scan', {});
+
+			// When reading an image fails, the sidecar reports it on a separate
+			// `fail` channel rather than answering `sourceMetadata`. Nothing was
+			// listening for it, so the router hit its "Unknown message type" branch
+			// and threw inside the socket callback, where the error went nowhere —
+			// turning a perfectly reportable failure into an indefinite hang.
+			// Route it to whichever metadata request is in flight.
+			let failPendingMetadata: ((error: Error) => void) | undefined;
+
+			registerHandler('fail', (data: any) => {
+				const error =
+					data instanceof Error
+						? data
+						: new Error(
+								data?.message ?? `The image reader failed: ${JSON.stringify(data)}`,
+							);
+				if (failPendingMetadata !== undefined) {
+					failPendingMetadata(error);
+				} else {
+					console.error('Sidecar reported a failure with no request in flight:', error);
+				}
+			});
+
+			// make the sourceMetada awaitable to be used on source selection
+			//
+			// The deadline covers the other way this stalls: the sidecar accepting
+			// a request and going silent, without even a `fail` — it dies mid-read,
+			// or something outside the app blocks it from reading the image. The
+			// budget is generous because metadata for a compressed image can
+			// require scanning the whole archive; it exists to bound a hang, not to
+			// police slow reads.
+			requestMetadata = async (params: any): Promise<SourceMetadata> => {
+				emit('sourceMetadata', JSON.stringify(params));
+
+				return new Promise((resolve, reject) => {
+					let timeout: ReturnType<typeof setTimeout>;
+					const settle = () => {
+						clearTimeout(timeout);
+						failPendingMetadata = undefined;
+					};
+
+					timeout = setTimeout(() => {
+						settle();
+						reject(
+							new Error(
+								`No response from the image reader after ${
+									SOURCE_METADATA_TIMEOUT_MS / 1000
+								}s.`,
+							),
+						);
+					}, SOURCE_METADATA_TIMEOUT_MS);
+
+					failPendingMetadata = (error: Error) => {
+						settle();
+						reject(error);
+					};
+
+					registerHandler('sourceMetadata', (data: any) => {
+						settle();
+						resolve(JSON.parse(data));
+					});
+				});
+			};
+
+			requestImageDownload = async (entry, destPath, onProgress, abortSignal) => {
+				return new Promise((resolve, reject) => {
+					const onAbort = () => emit('cancelDownload', {});
+					const settle = () => {
+						abortSignal?.removeEventListener('abort', onAbort);
+						registerHandler('downloadProgress', () => undefined);
+						registerHandler('downloadDone', () => undefined);
+						registerHandler('downloadError', () => undefined);
+					};
+
+					registerHandler('downloadProgress', (data: any) => {
+						onProgress(JSON.parse(data));
+					});
+					registerHandler('downloadDone', (data: any) => {
+						settle();
+						resolve(JSON.parse(data));
+					});
+					registerHandler('downloadError', (data: any) => {
+						settle();
+						const { name, message } = JSON.parse(data);
+						const error = new Error(message);
+						// Preserve the distinction the caller acts on: a checksum
+						// mismatch is a bad publish and must not be retried.
+						error.name = name ?? 'Error';
+						reject(error);
+					});
+
+					abortSignal?.addEventListener('abort', onAbort, { once: true });
+					emit('downloadImage', JSON.stringify({ entry, destPath }));
+				});
+			};
+
+			registerHandler('drives', (data: any) => {
+				setDrives(JSON.parse(data));
+			});
+
+			sidecarState = 'ready';
+		})
+		.catch((error: any) => {
+			sidecarState = 'failed';
+			// Rethrown so waitForSidecar() rejects; the window's
+			// unhandledrejection handler reports it if nothing is waiting.
+			throw new Error(`Failed to start the flasher process. error: ${error}`);
+		});
+}
 
 let popupExists = false;
 

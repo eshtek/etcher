@@ -23,7 +23,7 @@ import { isNil } from 'lodash';
 import * as path from 'path';
 import prettyBytes from 'pretty-bytes';
 import * as React from 'react';
-import { requestMetadata } from '../../app';
+import { requestMetadata, waitForSidecar } from '../../app';
 
 import type { ButtonProps } from 'rendition';
 import { Flex, Modal as SmallModal, Txt, Spinner } from 'rendition';
@@ -239,12 +239,14 @@ export class SourceSelector extends React.Component<
 						// this will send an event down the ipcMain asking for metadata
 						// we'll get the response through an event
 
-						// FIXME: This is a poor man wait while loading to prevent a potential race condition without completely blocking the interface
-						// This should be addressed when refactoring the GUI
-						let retriesLeft = 10;
-						while (requestMetadata === undefined && retriesLeft > 0) {
-							await new Promise((resolve) => setTimeout(resolve, 1050)); // api is trying to connect every 1000, this is offset to make sure we fall between retries
-							retriesLeft--;
+						// Wait for the helper rather than polling for it. The
+						// previous loop gave up after ten seconds and then called
+						// requestMetadata regardless, so a slow start surfaced as
+						// "(0 , f.requestMetadata) is not a function" rather than
+						// anything a user could act on.
+						await waitForSidecar();
+						if (requestMetadata === undefined) {
+							throw new Error('The imaging helper is unavailable.');
 						}
 
 						metadata = await requestMetadata({ selected, SourceType, auth });

@@ -37,7 +37,7 @@
 import { join } from 'path';
 import * as semver from 'semver';
 
-import { requestImageDownload } from '../app';
+import { requestImageDownload, waitForSidecar } from '../app';
 import { ChecksumMismatchError } from '../../../shared/hexos-image-core';
 
 import { version as appVersion } from '../../../../package.json';
@@ -147,10 +147,12 @@ export async function ensureImage(
 	onProgress: ProgressCallback,
 	abortSignal?: AbortSignal,
 ): Promise<{ path: string; alreadyExisted: boolean }> {
+	// Wait rather than fail: on a first launch the helper can still be starting,
+	// and this used to reject instantly with advice to try again that a Retry
+	// could not act on, because the helper is assigned exactly once.
+	await waitForSidecar();
 	if (requestImageDownload === undefined) {
-		throw new Error(
-			'The download helper is not ready yet; please try again in a moment.',
-		);
+		throw new Error('The imaging helper is unavailable.');
 	}
 	try {
 		return await requestImageDownload(
