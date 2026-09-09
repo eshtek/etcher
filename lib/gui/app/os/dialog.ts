@@ -21,6 +21,8 @@ import * as _ from 'lodash';
 import * as errors from '../../../shared/errors';
 import * as settings from '../../../gui/app/models/settings';
 import { SUPPORTED_EXTENSIONS } from '../../../shared/supported-formats';
+import { LOG_FILE_NAME } from '../../../shared/log-file-name';
+import { join } from 'path';
 import * as i18next from 'i18next';
 
 async function mountSourceDrive() {
@@ -113,5 +115,24 @@ export async function showWarning(options: {
 export function showError(error: Error) {
 	const title = errors.getTitle(error);
 	const message = errors.getDescription(error);
-	remote.dialog.showErrorBox(title, message);
+	// Point at the log from the dialog itself. It is otherwise only reachable
+	// through a menu bar that Windows hides until Alt is pressed, so the one
+	// moment a user needs the log is the moment they are least likely to find
+	// it.
+	remote.dialog.showErrorBox(title, `${message}\n\n${logFileHint()}`);
+}
+
+/**
+ * Where this run is being logged. Derived rather than asked of the main
+ * process so a failing dialog never depends on another round trip.
+ */
+function logFileHint(): string {
+	try {
+		return `Details are in the log file:\n${join(
+			remote.app.getPath('logs'),
+			LOG_FILE_NAME,
+		)}`;
+	} catch {
+		return 'A log file could not be located for this session.';
+	}
 }

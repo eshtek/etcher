@@ -17,10 +17,10 @@ import { createWriteStream, mkdirSync, renameSync, statSync } from 'fs';
 import type { WriteStream } from 'fs';
 import { join } from 'path';
 
+import { LOG_FILE_NAME } from '../shared/log-file-name';
+
 /** Rotate once the file passes this, keeping one previous generation. */
 const MAX_LOG_BYTES = 5 * 1024 * 1024;
-
-const LOG_NAME = 'hexos-imager.log';
 
 let stream: WriteStream | undefined;
 let logFilePath: string | undefined;
@@ -84,7 +84,7 @@ export function initLogFile() {
 	try {
 		const dir = electron.app.getPath('logs');
 		mkdirSync(dir, { recursive: true });
-		const target = join(dir, LOG_NAME);
+		const target = join(dir, LOG_FILE_NAME);
 
 		try {
 			if (statSync(target).size > MAX_LOG_BYTES) {
