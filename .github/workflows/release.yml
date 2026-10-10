@@ -241,6 +241,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      # The runner is arm64 and ships without Rosetta, which the x64 smoke
+      # steps below need to run what this job builds.
+      - name: Install Rosetta
+        if: matrix.arch == 'x64'
+        run: |
+          sudo softwareupdate --install-rosetta --agree-to-license
+          arch -x86_64 /usr/bin/true
+
       # Certs created in Xcode are machine-bound; CI needs the exported .p12
       # from 1Password, base64-encoded into APPLE_DEVELOPER_ID_P12.
       - name: Import Developer ID certificate
@@ -277,11 +285,24 @@ jobs:
       # No npm_config_arch here. It applies to every native module, including
       # build tooling like macos-alias that appdmg loads on the (arm64) host,
       # which then fails with "incompatible architecture (have 'x86_64', need
-      # 'arm64')" on the x64 job. The shipped natives are cross-built for the
-      # target separately: forge.sidecar.ts rebuilds mountutils with --arch and
-      # the packager rebuilds Electron's modules for --arch.
+      # 'arm64')" on the x64 job. forge.sidecar.ts rebuilds the natives the
+      # sidecar ships for the target arch instead, and native-arch.ts fails
+      # the build if any is still wrong.
       - name: Install dependencies
         run: npm ci
+
+      # npm ci just built the from-source natives for the arm64 host, so the
+      # guard must refuse them for an x64 target, naming them. Any other
+      # outcome means it has stopped checking.
+      - name: Check the architecture guard rejects host natives
+        if: matrix.arch == 'x64'
+        run: |
+          if out=$(npx ts-node --transpile-only native-arch.ts darwin x64 2>&1); then
+            echo "$out"; echo 'native-arch.ts accepted arm64 natives for an x64 build'
+            exit 1
+          fi
+          echo "$out"
+          grep -q 'drivelist.node (darwin/arm64)' <<< "$out"
 
       - name: Build, sign and notarize
         run: npm run make -- --arch=${{ matrix.arch }}
@@ -291,24 +312,22 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
-      # macos-14 runners are arm64 and have no Rosetta, so only the native
-      # slice can actually be launched here.
+      # x64 launches under Rosetta, installed above.
       - name: Smoke launch and screenshot
-        if: matrix.arch == 'arm64'
         run: |
           APP=$(find out -maxdepth 2 -name '*.app' -type d | head -1)
           [ -n "$APP" ] || { echo 'no .app found under out/'; exit 1; }
           echo "launching $APP"
           open "$APP"
           sleep 30
-          pgrep -f 'HexOS Imager' >/dev/null || { echo 'app not running after 30s'; exit 1; }
+          pgrep -x 'HexOS Imager' >/dev/null || { echo 'app not running after 30s'; exit 1; }
           mkdir -p smoke
           screencapture -x "smoke/macos-${{ matrix.arch }}-launch.png"
           osascript -e 'quit app "HexOS Imager"' || true
           echo 'app survived 30s and was screenshotted'
 
       - name: Upload smoke screenshot
-        if: always() && matrix.arch == 'arm64'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-macos-${{ matrix.arch }}
@@ -344,6 +363,22 @@ jobs:
           done <<< "$DMGS"
           echo 'app and dmg are both signed, notarized and stapled'
 
+      # The GUI stays up when its helper dies, so a running app proves little.
+      # Run the helper from the notarized DMG and have it scan for drives over
+      # its WebSocket. Rosetta refuses an arm64 native module the same way an
+      # Intel Mac does.
+      - name: Smoke the helper from the DMG
+        run: |
+          set -euo pipefail
+          DMG=$(find out/make -name '*.dmg' | head -1)
+          [ -n "$DMG" ] || { echo 'no .dmg produced'; exit 1; }
+          MNT=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG"
+          trap 'hdiutil detach "$MNT" || true' EXIT
+          node scripts/smoke-sidecar.js \
+            "$MNT/HexOS Imager.app/Contents/Resources/etcher-util" \
+            ${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: hexos-imager-macos-${{ matrix.arch }}
@@ -356,6 +391,55 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/notary/AuthKey.p8" || true
+
+  # The x64 DMG on Intel hardware. macos-15-intel is the last Intel image
+  # GitHub offers and is supported until August 2027; after that, drop this
+  # job and rely on the Rosetta smoke in the macos job.
+  macos-intel:
+    name: macOS x64 on Intel (smoke)
+    needs: macos
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # 22 for its built-in WebSocket client, which is all the smoke script
+      # needs, so this job skips npm ci
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hexos-imager-macos-x64
+          path: dmg
+
+      - name: Gatekeeper, helper and launch
+        run: |
+          set -euo pipefail
+          DMG=$(find dmg -name '*.dmg' | head -1)
+          [ -n "$DMG" ] || { echo 'no .dmg in the artifact'; exit 1; }
+          MNT=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG"
+          trap 'hdiutil detach "$MNT" || true' EXIT
+          APP="$MNT/HexOS Imager.app"
+          spctl -a -vv -t exec "$APP"
+          node scripts/smoke-sidecar.js "$APP/Contents/Resources/etcher-util"
+          open "$APP"
+          sleep 30
+          pgrep -x 'HexOS Imager' >/dev/null || { echo 'app not running after 30s'; exit 1; }
+          mkdir -p smoke
+          screencapture -x smoke/macos-x64-intel-launch.png
+          osascript -e 'quit app "HexOS Imager"' || true
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-macos-x64-intel
+          path: smoke/
+          if-no-files-found: warn
+          retention-days: 14
 
   # Linux needs no signing, so no environment gate and no secrets. Both
   # architectures build natively rather than cross-compiling: the native
@@ -414,7 +498,7 @@ jobs:
   publish:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, macos, linux]
+    needs: [windows, macos, macos-intel, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

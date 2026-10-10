@@ -12,6 +12,8 @@ import * as path from 'path';
 
 import debug from 'debug';
 
+import { assertNativeArch, findMismatchedNatives } from './native-arch';
+
 const log = debug('sidecar');
 
 function isStartScrpt(): boolean {
@@ -60,8 +62,34 @@ function addWebpackDefine(
  */
 const SIDECAR_NODE_MAJOR = 20;
 
+function run(cmd: string, args: string[], env?: NodeJS.ProcessEnv) {
+	log('running command:', cmd, args.join(' '));
+	execFileSync(cmd, args, { shell: true, stdio: 'inherit', env });
+}
+
+/**
+ * npm ci compiles from-source natives for the build host, so a target with a
+ * different arch (macOS x64 on an arm64 runner) needs them rebuilt. The
+ * rebuild stays in node_modules; the next host build switches them back.
+ */
+function ensureSidecarNatives(platform: string, arch: string) {
+	const mismatched = findMismatchedNatives(platform, arch);
+	if (mismatched.length === 0) {
+		return;
+	}
+	// build-from-source: node-gyp-build and prebuild-install otherwise keep
+	// the host build because it loads fine in the (host) install process
+	run('npm', ['rebuild', ...new Set(mismatched.map((m) => m.pkg))], {
+		...process.env,
+		npm_config_arch: arch,
+		npm_config_build_from_source: 'true',
+	});
+	assertNativeArch(platform, arch);
+}
+
 function build(
 	sourcesDir: string,
+	platform: string,
 	buildForArchs: string,
 	binDir: string,
 	binName: string,
@@ -78,9 +106,7 @@ function build(
 		);
 	}
 
-	const commands: Array<[string, string[], object?]> = [
-		['tsc', ['--project', 'tsconfig.sidecar.json', '--outDir', sourcesDir]],
-	];
+	run('tsc', ['--project', 'tsconfig.sidecar.json', '--outDir', sourcesDir]);
 
 	buildForArchs.split(',').forEach((arch) => {
 		const binPath = isStartScrpt()
@@ -93,35 +119,32 @@ function build(
 		// FIXME: rebuilding mountutils shouldn't be necessary, but it is.
 		// It's coming from etcher-sdk, a fix has been upstreamed but to use
 		// the latest etcher-sdk we need to upgrade axios at the same time.
-		commands.push(['npm', ['rebuild', 'mountutils', `--arch=${arch}`]]);
+		// This only catches a Node ABI mismatch: node-gyp-build skips the
+		// rebuild whenever the host build loads, so --arch alone does not
+		// cross-build. ensureSidecarNatives does.
+		run('npm', ['rebuild', 'mountutils', `--arch=${arch}`]);
 
-		commands.push([
-			'pkg',
-			[
-				path.join(sourcesDir, 'util', 'api.js'),
-				'-c',
-				'pkg-sidecar.json',
-				// shrink the snapshot; decompression cost at startup is negligible
-				'--compress',
-				'Brotli',
-				// `--no-bytecode` so that we can cross-compile for arm64 on x64
-				'--no-bytecode',
-				'--public',
-				'--public-packages',
-				'"*"',
-				// always build for host platform and node version
-				// https://github.com/vercel/pkg-fetch/releases
-				'--target',
-				`node${SIDECAR_NODE_MAJOR}-${arch}`,
-				'--output',
-				binPath,
-			],
+		ensureSidecarNatives(platform, arch);
+
+		run('pkg', [
+			path.join(sourcesDir, 'util', 'api.js'),
+			'-c',
+			'pkg-sidecar.json',
+			// shrink the snapshot; decompression cost at startup is negligible
+			'--compress',
+			'Brotli',
+			// `--no-bytecode` so that we can cross-compile for arm64 on x64
+			'--no-bytecode',
+			'--public',
+			'--public-packages',
+			'"*"',
+			// always build for host platform and node version
+			// https://github.com/vercel/pkg-fetch/releases
+			'--target',
+			`node${SIDECAR_NODE_MAJOR}-${arch}`,
+			'--output',
+			binPath,
 		]);
-	});
-
-	commands.forEach(([cmd, args, opt]) => {
-		log('running command:', cmd, args.join(' '));
-		execFileSync(cmd, args, { shell: true, stdio: 'inherit', ...opt });
 	});
 }
 
@@ -168,7 +191,7 @@ export class SidecarPlugin extends PluginBase<void> {
 			},
 			generateAssets: async (_config, platform, arch) => {
 				log('generateAssets', { platform, arch });
-				build(SRC_DIR, arch, BIN_DIR, BIN_NAME);
+				build(SRC_DIR, platform, arch, BIN_DIR, BIN_NAME);
 			},
 			packageAfterCopy: async (
 				_config,

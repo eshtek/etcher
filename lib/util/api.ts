@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// etcher-sdk loads mountutils lazily, when a write starts. Loading it here
+// makes a build for the wrong arch fail at launch instead.
+import 'mountutils';
 import { WebSocketServer } from 'ws';
 import type { Dictionary } from 'lodash';
 import { values } from 'lodash';
@@ -296,7 +299,8 @@ function setup(): Promise<EmitLog> {
 					emitLog = log;
 					emitState = (state) => emit('state', state);
 					emitFail = (data) => emit('fail', data);
-					emitDrives = (drives) => emit('drives', JSON.stringify(values(drives)));
+					emitDrives = (drives) =>
+						emit('drives', JSON.stringify(values(drives)));
 					emitSourceMetadata = (sourceMetadata) =>
 						emit('sourceMetadata', JSON.stringify(sourceMetadata));
 					startScanning();
