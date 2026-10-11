@@ -26,7 +26,9 @@ import {
 	DECOMPRESSED_IMAGE_PREFIX,
 } from 'etcher-sdk/build/multi-write';
 
-import { totalmem } from 'os';
+import { execFile } from 'child_process';
+import { platform, totalmem } from 'os';
+import { promisify } from 'util';
 
 import { cleanupTmpFiles } from 'etcher-sdk/build/tmp';
 
@@ -40,6 +42,33 @@ import { toJSON } from '../shared/errors';
 import axios from 'axios';
 import { omit } from 'lodash';
 import { emitLog, emitState, emitFail } from './api';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * etcher-sdk's mountutils unmount misses APFS volumes, which sit on a
+ * synthesized container disk, so the exclusive open gets EBUSY until its
+ * retries give up about 19 minutes later (balena-io/etcher#4490).
+ */
+class FlashTarget extends BlockDevice {
+	protected async _open(): Promise<void> {
+		if (platform() === 'darwin' && this.oWrite && !this.isSystem) {
+			try {
+				await execFileAsync(
+					'/usr/sbin/diskutil',
+					['unmountDisk', 'force', this.device],
+					{ timeout: 30_000 },
+				);
+				emitLog(`Unmounted all volumes on ${this.device}`);
+			} catch (error: any) {
+				emitLog(
+					`diskutil unmountDisk ${this.device} failed: ${error?.stderr || error?.message}`,
+				);
+			}
+		}
+		await super._open();
+	}
+}
 
 async function write(options: WriteOptions) {
 	/**
@@ -75,7 +104,7 @@ async function write(options: WriteOptions) {
 	emitLog(`Auto blockmapping: ${options.autoBlockmapping}`);
 	emitLog(`Decompress first: ${options.decompressFirst}`);
 	const dests = options.destinations.map((destination) => {
-		return new BlockDevice({
+		return new FlashTarget({
 			drive: destination,
 			unmountOnSuccess: true,
 			write: true,
