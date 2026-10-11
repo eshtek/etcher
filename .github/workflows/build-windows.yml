@@ -20,12 +20,12 @@ jobs:
       - name: Enable long paths in git
         run: git config --global core.longpaths true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The sidecar (etcher-util) embeds Node 20 via pkg; native modules
       # must be compiled against the same major version or the sidecar
       # segfaults on startup.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.x
           cache: npm
@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-windows-x64
           path: smoke/
@@ -87,7 +87,7 @@ jobs:
         run: Get-ChildItem -Recurse out/make | Select-Object FullName
         shell: pwsh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hexos-imager-windows-x64
           path: |

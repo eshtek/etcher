@@ -41,24 +41,24 @@ jobs:
       - name: Enable long paths in git
         run: git config --global core.longpaths true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The sidecar (etcher-util) embeds Node 20 via pkg; native modules
       # must be compiled against the same major version or the sidecar
       # segfaults on startup.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Azure login (OIDC — no stored secret)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: nuget/setup-nuget@v2
+      - uses: nuget/setup-nuget@v4
 
       # signtool and the signing dlib must sit at paths with no spaces in them.
       # signtool ships under "C:\Program Files (x86)\Windows Kits\..." and fails
@@ -189,14 +189,14 @@ jobs:
 
       - name: Upload smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-windows-x64
           path: smoke/
           if-no-files-found: warn
           retention-days: 14
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hexos-imager-windows-x64
           path: |
@@ -209,7 +209,7 @@ jobs:
       # Surfaces timestamping warnings that signtool swallows.
       - name: Upload signing log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-signing-log
           path: electron-windows-sign.log
@@ -234,9 +234,9 @@ jobs:
       matrix:
         arch: [arm64, x64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -328,7 +328,7 @@ jobs:
 
       - name: Upload smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-macos-${{ matrix.arch }}
           path: smoke/
@@ -379,7 +379,7 @@ jobs:
             "$MNT/HexOS Imager.app/Contents/Resources/etcher-util" \
             ${{ matrix.arch == 'x64' && 'x86_64' || 'arm64' }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hexos-imager-macos-${{ matrix.arch }}
           path: out/make/**/*.dmg
@@ -401,15 +401,15 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 22 for its built-in WebSocket client, which is all the smoke script
       # needs, so this job skips npm ci
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.x
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: hexos-imager-macos-x64
           path: dmg
@@ -434,7 +434,7 @@ jobs:
 
       - name: Upload smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-macos-x64-intel
           path: smoke/
@@ -458,9 +458,9 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -483,7 +483,7 @@ jobs:
       - name: List artifacts
         run: find out/make -type f \( -name '*.deb' -o -name '*.rpm' \) -exec ls -la {} \;
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hexos-imager-linux-${{ matrix.arch }}
           path: |
@@ -504,7 +504,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
