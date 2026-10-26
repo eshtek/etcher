@@ -59,6 +59,18 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # The signing dlib asks the Azure CLI for a codesigning token only when
+      # signing starts. The CLI gets it by exchanging the GitHub OIDC
+      # assertion from the login above, which is short-lived: signing 7
+      # minutes after login worked, 11 minutes after it hung at "Submitting
+      # digest for signing..." until the step timed out. Fetching the token
+      # now leaves it in the CLI's cache, valid for an hour, for the dlib.
+      - name: Cache the codesigning token
+        shell: pwsh
+        run: |
+          az account get-access-token --resource https://codesigning.azure.net --query expiresOn --output tsv
+          if ($LASTEXITCODE -ne 0) { throw 'could not get a codesigning token' }
+
       - uses: nuget/setup-nuget@v4
 
       # signtool and the signing dlib must sit at paths with no spaces in them.
