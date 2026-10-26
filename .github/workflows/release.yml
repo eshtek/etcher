@@ -30,9 +30,10 @@ jobs:
     # @electron/node-gyp matches VS by a hardcoded list of version years and
     # rejects 18 as unsupported, so mountutils fails to build during npm ci.
     runs-on: windows-2022
-    # Well clear of the ~11 minutes this job takes; here so a hang fails in a
-    # readable amount of time rather than burning the six hour default.
-    timeout-minutes: 60
+    # A healthy run takes 16-20 minutes on Node 22, about 11 of them in the
+    # build step. That step has its own limit so a signing hang still leaves
+    # time to upload the log.
+    timeout-minutes: 30
     environment: release
     permissions:
       id-token: write # required for the OIDC token exchange with Entra
@@ -98,8 +99,12 @@ jobs:
 
       - name: Build signed distributables
         run: npm run make
+        timeout-minutes: 20
         env:
           NODE_ENV: production # forge.config.ts gates signing on this
+          # Streams each signtool call and its output into the job log; the
+          # forge spinner otherwise hides which file signing is stuck on.
+          DEBUG: electron-windows-sign
           AZURE_CODE_SIGNING_DLIB: C:\signing\Microsoft.Trusted.Signing.Client\bin\x64\Azure.CodeSigning.Dlib.dll
           AZURE_METADATA_JSON: C:\signing\metadata.json
           SIGNTOOL_PATH: C:\signing\signtool\signtool.exe
