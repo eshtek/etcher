@@ -69,7 +69,7 @@ manifest's CDN TTL short regardless.
 
 ## Development
 
-Requirements: Node.js 20.x and Python 3.
+Requirements: Node.js 22.x and Python 3.
 
 ```sh
 npm ci           # install dependencies

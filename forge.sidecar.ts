@@ -58,9 +58,10 @@ function addWebpackDefine(
 /**
  * Node major embedded in the sidecar by pkg. The native modules the sidecar
  * carries are rebuilt below under whichever Node runs this script, and they
- * only load if the two match.
+ * only load if the two match. It also sets the app's real macOS floor: the
+ * Node 24 runtime needs macOS 13.5, while Node 22 and Electron 37 run on 11.
  */
-const SIDECAR_NODE_MAJOR = 20;
+const SIDECAR_NODE_MAJOR = 22;
 
 function run(cmd: string, args: string[], env?: NodeJS.ProcessEnv) {
 	log('running command:', cmd, args.join(' '));
@@ -95,9 +96,9 @@ function build(
 	binName: string,
 ) {
 	// A mismatch here builds without complaint and fails at runtime instead:
-	// mountutils rebuilt under Node 22 reported NODE_MODULE_VERSION 127 where
-	// the embedded Node 20 needs 115, and the sidecar only discovers that the
-	// first time it tries to unmount a drive. Refuse up front.
+	// mountutils rebuilt under a newer Node than the embedded one reported a
+	// NODE_MODULE_VERSION the sidecar could not load, and the sidecar only
+	// discovers that the first time it tries to unmount a drive. Refuse up front.
 	const hostMajor = parseInt(process.versions.node.split('.')[0], 10);
 	if (hostMajor !== SIDECAR_NODE_MAJOR) {
 		throw new Error(
