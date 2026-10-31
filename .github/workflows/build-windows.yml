@@ -32,10 +32,14 @@ jobs:
           node-version: 24.x
           cache: npm
 
+      # Install scripts run one at a time: parallel node-gyp builds racing to
+      # unpack the same Node.js headers fail with "Completion callback never
+      # invoked" (upstream bc583991)
       - name: Install dependencies
         run: npm ci
         env:
           npm_config_arch: x64
+          npm_config_foreground_scripts: 'true'
 
       - name: Build distributables (Squirrel installer + zip)
         run: npm run make
