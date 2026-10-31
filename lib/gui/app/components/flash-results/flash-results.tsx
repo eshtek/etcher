@@ -215,11 +215,11 @@ export function FlashResults({
 					titleElement={
 						<Flex alignItems="baseline" mb={18}>
 							<Txt fontSize={24} align="left">
-								{i18next.t('failedTarget')}
+								{i18next.t('flash.failedTarget')}
 							</Txt>
 						</Flex>
 					}
-					action={i18next.t('failedRetry')}
+					action={i18next.t('flash.failedRetry')}
 					cancel={() => setShowErrorsInfo(false)}
 					done={() => {
 						setShowErrorsInfo(false);
