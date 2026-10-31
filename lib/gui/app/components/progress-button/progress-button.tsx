@@ -15,11 +15,11 @@
  */
 
 import * as React from 'react';
-import { Flex, Button, ProgressBar, Txt } from 'rendition';
 import { default as styled } from 'styled-components';
 
 import { fromFlashState } from '../../modules/progress-status';
 import { StepButton } from '../../styled-components';
+import { Flex, Button, ProgressBar, Txt } from '../ui';
 import * as i18next from 'i18next';
 
 const FlashProgressBar = styled(ProgressBar)`

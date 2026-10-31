@@ -18,7 +18,6 @@ import QuestionCircleSvg from '@fortawesome/fontawesome-free/svgs/solid/circle-q
 
 import * as path from 'path';
 import * as React from 'react';
-import { Flex } from 'rendition';
 import styled from 'styled-components';
 
 import FinishPage from '../../components/finish/finish';
@@ -30,6 +29,7 @@ import * as settings from '../../models/settings';
 import { observe } from '../../models/store';
 import { open as openExternal } from '../../os/open-external/services/open-external';
 import { IconButton as BaseIcon, ThemedProvider } from '../../styled-components';
+import { Flex } from '../../components/ui';
 
 import {
 	TargetSelector,

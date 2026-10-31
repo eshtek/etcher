@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-import * as _ from 'lodash';
-import { Theme } from 'rendition';
-
 export const colors = {
 	dark: {
 		foreground: '#fff',
@@ -49,9 +46,8 @@ export const colors = {
 		foreground: '#fff',
 		// Deck UI --primary: hsl(276 54% 45%)
 		background: '#7F35B2',
-		// rendition's own components (modal action buttons, progress bars,
-		// links, checkboxes) read main/light/dark/semilight and default to
-		// blue unless every key is overridden
+		// Shades in the shape the old UI library used; the primitives in
+		// components/ui read main (fills, links, checkboxes) and dark (hover)
 		main: '#7F35B2',
 		light: '#9b4ed1',
 		dark: '#6a2b96',
@@ -60,6 +56,8 @@ export const colors = {
 	secondary: {
 		foreground: '#000',
 		background: '#ddd',
+		// Base colour of outline and plain buttons and of table rows in
+		// components/ui
 		main: '#fff',
 	},
 	warning: {
@@ -76,80 +74,9 @@ export const colors = {
 	},
 };
 
-const font = 'SourceSansPro';
-
-export const theme = _.merge({}, Theme, {
+// Handed to styled-components' ThemeProvider for components that read
+// `props.theme`
+export const theme = {
 	colors,
-	font,
-	header: {
-		height: '40px',
-	},
-	global: {
-		font: {
-			family: font,
-			size: 16,
-		},
-		text: {
-			medium: {
-				size: 16,
-			},
-		},
-	},
-	button: {
-		border: {
-			width: '0',
-			// Deck UI rounded-lg
-			radius: '8px',
-		},
-		disabled: {
-			opacity: 1,
-		},
-		extend: (props: any) => `
-			width: 200px;
-			font-size: 16px;
-			font-weight: 600;
-
-			&& {
-				width: 200px;
-				height: 48px;
-			}
-
-			${
-				props?.primary && !props?.plain
-					? `
-			:enabled {
-				background-image: linear-gradient(135deg, #cb2eff, #7f35b2);
-				background-color: #7f35b2;
-			}
-
-			:enabled:hover,
-			:enabled:focus {
-				background-image: none;
-				background-color: #7f35b2;
-			}
-			`
-					: ''
-			}
-
-			:disabled {
-				background-image: none;
-				background-color: ${colors.dark.disabled.background};
-				color: ${colors.dark.disabled.foreground};
-				opacity: 1;
-
-				:hover {
-					background-image: none;
-					background-color: ${colors.dark.disabled.background};
-					color: ${colors.dark.disabled.foreground};
-				}
-			}
-		`,
-	},
-	layer: {
-		extend: () => `
-			> div:first-child {
-				background-color: transparent;
-			}
-		`,
-	},
-});
+	font: 'SourceSansPro',
+};

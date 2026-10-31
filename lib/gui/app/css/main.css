@@ -71,6 +71,6 @@ input[type='checkbox'] + div {
 	opacity: 0.4;
 }
 
-#rendition-tooltip-root > div {
+#tooltip-root > div {
 	font-family: 'SourceSansPro', sans-serif;
 }

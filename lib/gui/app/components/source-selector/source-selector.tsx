@@ -25,8 +25,6 @@ import prettyBytes from 'pretty-bytes';
 import * as React from 'react';
 import { requestMetadata, waitForSidecar } from '../../app';
 
-import type { ButtonProps } from 'rendition';
-import { Flex, Modal as SmallModal, Txt, Spinner } from 'rendition';
 import styled from 'styled-components';
 
 import * as errors from '../../../../shared/errors';
@@ -49,6 +47,8 @@ import { colors } from '../../theme';
 import { prettyHexOSImageName } from '../../utils/hexos-image-name';
 import { middleEllipsis } from '../../utils/middle-ellipsis';
 import { SVGIcon } from '../svg-icon/svg-icon';
+import type { ButtonProps } from '../ui';
+import { Flex, Modal as SmallModal, Txt, Spinner } from '../ui';
 
 import ImageSvg from '../../../assets/image.svg';
 import { HexOSDownload } from '../hexos-download/hexos-download';
@@ -64,7 +64,6 @@ import * as i18next from 'i18next';
 const isURL = (imagePath: string) =>
 	imagePath.startsWith('https://') || imagePath.startsWith('http://');
 
-// TODO move these styles to rendition
 const ModalText = styled.p`
 	a {
 		color: #a95fd8;

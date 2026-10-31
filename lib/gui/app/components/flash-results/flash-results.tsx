@@ -18,8 +18,6 @@ import CircleSvg from '@fortawesome/fontawesome-free/svgs/solid/circle.svg';
 import CheckCircleSvg from '@fortawesome/fontawesome-free/svgs/solid/circle-check.svg';
 import TimesCircleSvg from '@fortawesome/fontawesome-free/svgs/solid/circle-xmark.svg';
 import * as React from 'react';
-import type { FlexProps, TableColumn } from 'rendition';
-import { Flex, Link, Txt } from 'rendition';
 import styled from 'styled-components';
 
 import { progress } from '../../../../shared/messages';
@@ -31,6 +29,8 @@ import { resetState } from '../../models/flash-state';
 import * as selection from '../../models/selection-state';
 import { middleEllipsis } from '../../utils/middle-ellipsis';
 import { Modal, Table } from '../../styled-components';
+import type { FlexProps, TableColumn } from '../ui';
+import { Flex, Link, Txt } from '../ui';
 import * as i18next from 'i18next';
 
 const ErrorsTable = styled((props) => <Table<FlashError> {...props} />)`

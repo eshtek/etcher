@@ -16,8 +16,6 @@
 
 import ExclamationTriangleSvg from '@fortawesome/fontawesome-free/svgs/solid/triangle-exclamation.svg';
 import * as React from 'react';
-import type { FlexProps } from 'rendition';
-import { Flex, Txt } from 'rendition';
 
 import type { DriveStatus } from '../../../../shared/drive-constraints';
 import { getDriveImageCompatibilityStatuses } from '../../../../shared/drive-constraints';
@@ -31,6 +29,8 @@ import {
 	StepNameButton,
 } from '../../styled-components';
 import { middleEllipsis } from '../../utils/middle-ellipsis';
+import type { FlexProps } from '../ui';
+import { Flex, Txt } from '../ui';
 import * as i18next from 'i18next';
 
 interface TargetSelectorProps {

@@ -18,8 +18,6 @@ import ExclamationTriangleSvg from '@fortawesome/fontawesome-free/svgs/solid/tri
 import ChevronDownSvg from '@fortawesome/fontawesome-free/svgs/solid/chevron-down.svg';
 import type * as sourceDestination from 'etcher-sdk/build/source-destination/';
 import * as React from 'react';
-import type { ModalProps, TableColumn } from 'rendition';
-import { Flex, Txt, Badge, Link } from 'rendition';
 import styled from 'styled-components';
 
 import type {
@@ -40,6 +38,8 @@ import { logException } from '../../modules/analytics';
 import { open as openExternal } from '../../os/open-external/services/open-external';
 import type { GenericTableProps } from '../../styled-components';
 import { Alert, Modal, Table } from '../../styled-components';
+import type { ModalProps, TableColumn } from '../ui';
+import { Flex, Txt, Badge, Link } from '../ui';
 
 import type { SourceMetadata } from '../../../../shared/typings/source-selector';
 import { middleEllipsis } from '../../utils/middle-ellipsis';

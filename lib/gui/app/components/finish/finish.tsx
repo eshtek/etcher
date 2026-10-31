@@ -16,7 +16,6 @@
 
 import { basename } from 'path';
 import * as React from 'react';
-import { Flex } from 'rendition';
 import { v4 as uuidV4 } from 'uuid';
 
 import * as flashState from '../../models/flash-state';
@@ -26,6 +25,7 @@ import { FlashAnother } from '../flash-another/flash-another';
 import type { FlashError } from '../flash-results/flash-results';
 import { FlashResults } from '../flash-results/flash-results';
 import { prettyHexOSImageName } from '../../utils/hexos-image-name';
+import { Flex } from '../ui';
 
 function restart(goToMain: () => void) {
 	selectionState.deselectAllDrives();

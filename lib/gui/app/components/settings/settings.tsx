@@ -17,12 +17,12 @@
 import GithubSvg from '@fortawesome/fontawesome-free/svgs/brands/github.svg';
 import * as _ from 'lodash';
 import * as React from 'react';
-import { Box, Checkbox, Flex, Txt } from 'rendition';
 
 import { version, packageType } from '../../../../../package.json';
 import * as settings from '../../models/settings';
 import { open as openExternal } from '../../os/open-external/services/open-external';
 import { Modal } from '../../styled-components';
+import { Box, Checkbox, Flex, Txt } from '../ui';
 import * as i18next from 'i18next';
 import { etcherProInfo } from '../../utils/etcher-pro-specific';
 
