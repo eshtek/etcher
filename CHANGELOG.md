@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+# v2.1.9
+## (2026-10-22)
+
+* patch: Check etcher-util starts on Linux CI [Edwin Joassart]
+* patch: Build etcher-util on Node.js 24.22.1 for the eMudhra CA fix [Edwin Joassart]
+* patch: Move Intel macOS CI to macos-26-large [Edwin Joassart]
+* patch: Build native addons with upstream node-gyp on Windows [Edwin Joassart]
+* patch: Update Electron to 44.9.1 and etcher-util to Node.js 24 [Edwin Joassart]
+
+# v2.1.8
+## (2026-10-19)
+
+* patch: Harden etcher-util startup on macOS [Sam Duffield]
+* patch: Restore entitlements needed by etcher-util on macOS [Sam Duffield]
+
+# v2.1.7
+## (2026-09-18)
+
+* patch: macos hardening [Edwin Joassart]
+* patch: fix copyright [Edwin Joassart]
+
 # v2.1.6
 ## (2026-05-13)
 

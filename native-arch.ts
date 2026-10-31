@@ -12,7 +12,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MACHO_CPU: Record<number, string> = {
+export const MACHO_CPU: Record<number, string> = {
 	0x7: 'ia32',
 	0xc: 'arm',
 	0x01000007: 'x64',
@@ -143,6 +143,19 @@ function isLoadedOn(
 	platform: string,
 	arch: string,
 ): boolean {
+	// napi-rs packages (Electron 44's @electron-internal/extract-zip) ship
+	// every target side by side as <name>.<platform>-<arch>[-<abi>].node and
+	// load only the one matching the running process
+	const napi =
+		/\.(darwin|linux|win32|freebsd|android)-(universal|x64|arm64|ia32|arm)(-[a-z0-9]+)?\.node$/.exec(
+			rel,
+		);
+	if (napi != null) {
+		return (
+			napi[1] === platform &&
+			(napi[2] === arch || (napi[2] === 'universal' && platform === 'darwin'))
+		);
+	}
 	const parts = rel.split(path.sep);
 	const i = parts.indexOf('prebuilds');
 	if (i === -1) {
@@ -174,13 +187,18 @@ export function findMismatchedNatives(
 	return findMismatchedIn(productionPackageDirs(root), platform, arch, root);
 }
 
-export function findMismatchedIn(
+interface LoadedNative {
+	/** package directory */
+	dir: string;
+	file: string;
+}
+
+function loadedNativesIn(
 	packageDirs: string[],
 	platform: string,
 	arch: string,
-	root: string,
-): Mismatch[] {
-	const mismatched: Mismatch[] = [];
+): LoadedNative[] {
+	const loaded: LoadedNative[] = [];
 	for (const dir of packageDirs) {
 		if (!fs.existsSync(dir)) {
 			continue;
@@ -189,21 +207,43 @@ export function findMismatchedIn(
 		const buildDir = path.join('build', 'Release') + path.sep;
 		const pkgHasBuild = files.some((rel) => rel.startsWith(buildDir));
 		for (const rel of files) {
-			if (!isLoadedOn(rel, pkgHasBuild, platform, arch)) {
-				continue;
+			if (isLoadedOn(rel, pkgHasBuild, platform, arch)) {
+				loaded.push({ dir, file: path.join(dir, rel) });
 			}
-			const file = path.join(dir, rel);
-			const info = readBinaryInfo(file);
-			if (info?.platform !== platform || !info.archs.includes(arch)) {
-				const pkgJson = path.join(dir, 'package.json');
-				mismatched.push({
-					pkg: JSON.parse(fs.readFileSync(pkgJson, 'utf8')).name,
-					file: path.relative(root, file),
-					found: info
-						? `${info.platform}/${info.archs.join('+')}`
-						: 'unrecognized',
-				});
-			}
+		}
+	}
+	return loaded;
+}
+
+/** Native binaries of production dependencies that the target would load. */
+export function findLoadedNatives(
+	platform: string,
+	arch: string,
+	root = process.cwd(),
+): string[] {
+	return loadedNativesIn(productionPackageDirs(root), platform, arch).map(
+		(n) => n.file,
+	);
+}
+
+export function findMismatchedIn(
+	packageDirs: string[],
+	platform: string,
+	arch: string,
+	root: string,
+): Mismatch[] {
+	const mismatched: Mismatch[] = [];
+	for (const { dir, file } of loadedNativesIn(packageDirs, platform, arch)) {
+		const info = readBinaryInfo(file);
+		if (info?.platform !== platform || !info.archs.includes(arch)) {
+			const pkgJson = path.join(dir, 'package.json');
+			mismatched.push({
+				pkg: JSON.parse(fs.readFileSync(pkgJson, 'utf8')).name,
+				file: path.relative(root, file),
+				found: info
+					? `${info.platform}/${info.archs.join('+')}`
+					: 'unrecognized',
+			});
 		}
 	}
 	return mismatched;

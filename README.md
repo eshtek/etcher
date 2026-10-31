@@ -65,11 +65,12 @@ manifest's CDN TTL short regardless.
 
 - Linux; most distros; Intel 64-bit.
 - Windows 10 and later; Intel 64-bit.
-- macOS 10.13 (High Sierra) and later; both Intel and Apple Silicon.
+- macOS 13.5 (Ventura) and later; both Intel and Apple Silicon. HexOS Imager
+  2.1.6 remains available for macOS 11 to 13.4.
 
 ## Development
 
-Requirements: Node.js 22.x and Python 3.
+Requirements: Node.js 24.x and Python 3.
 
 ```sh
 npm ci           # install dependencies

@@ -61,7 +61,7 @@ function addWebpackDefine(
  * only load if the two match. It also sets the app's real macOS floor: the
  * Node 24 runtime needs macOS 13.5, while Node 22 and Electron 37 run on 11.
  */
-const SIDECAR_NODE_MAJOR = 22;
+const SIDECAR_NODE_MAJOR = 24;
 
 function run(cmd: string, args: string[], env?: NodeJS.ProcessEnv) {
 	log('running command:', cmd, args.join(' '));
@@ -117,13 +117,16 @@ function build(
 			: // otherwise build in arch-specific directory within binDir
 				path.resolve(binDir, arch, binName);
 
+		// Native addons must be compiled for the Node runtime embedded in the
+		// sidecar: a prebuilt drivelist addon built for the host runtime can make
+		// the packaged Node 24 process crash while registering the N-API module.
 		// FIXME: rebuilding mountutils shouldn't be necessary, but it is.
 		// It's coming from etcher-sdk, a fix has been upstreamed but to use
 		// the latest etcher-sdk we need to upgrade axios at the same time.
 		// This only catches a Node ABI mismatch: node-gyp-build skips the
 		// rebuild whenever the host build loads, so --arch alone does not
 		// cross-build. ensureSidecarNatives does.
-		run('npm', ['rebuild', 'mountutils', `--arch=${arch}`]);
+		run('npm', ['rebuild', 'drivelist', 'mountutils', `--arch=${arch}`]);
 
 		ensureSidecarNatives(platform, arch);
 

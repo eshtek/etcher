@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: 22.x
+  NODE_VERSION: 24.x
   # Pin the Artifact Signing client. Verify the current version on nuget.org
   # before the first real release; the package kept its Trusted Signing name
   # through the 2026 rename.
@@ -30,7 +30,7 @@ jobs:
     # @electron/node-gyp matches VS by a hardcoded list of version years and
     # rejects 18 as unsupported, so mountutils fails to build during npm ci.
     runs-on: windows-2022
-    # A healthy run takes 16-20 minutes on Node 22, about 11 of them in the
+    # A healthy run takes 16-20 minutes, about 11 of them in the
     # build step. That step has its own limit so a signing hang still leaves
     # time to upload the log.
     timeout-minutes: 30
@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      # The sidecar (etcher-util) embeds Node 22 via pkg; native modules
+      # The sidecar (etcher-util) embeds Node 24 via pkg; native modules
       # must be compiled against the same major version or the sidecar
       # segfaults on startup.
       - uses: actions/setup-node@v7
@@ -104,10 +104,14 @@ jobs:
 
           Get-Content C:\signing\metadata.json
 
+      # Install scripts run one at a time: parallel node-gyp builds racing to
+      # unpack the same Node.js headers fail with "Completion callback never
+      # invoked" (upstream bc583991)
       - name: Install dependencies
         run: npm ci
         env:
           npm_config_arch: x64
+          npm_config_foreground_scripts: 'true'
 
       - name: Build signed distributables
         run: npm run make
@@ -238,7 +242,10 @@ jobs:
     # completes and the Developer ID cert is in repo secrets. Flip the repo
     # variable APPLE_SIGNING_ENABLED to 'true' to arm these jobs.
     if: vars.APPLE_SIGNING_ENABLED == 'true'
-    runs-on: macos-14
+    # The runner's macOS doesn't set the app's floor (the check after the
+    # build does), so this tracks the newest image. macos-14 retires on
+    # 2026-11-02 (actions/runner-images#13518).
+    runs-on: macos-26
     # Apple's notary queue is not bounded by anything we control: a first
     # submission sat In Progress for five and a half hours on 2026-09-01 with
     # the developer system status page green throughout. GitHub's default job
@@ -329,6 +336,16 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
+      # The app runs on the oldest macOS any of its binaries allows: Electron 44
+      # needs 13.0, the Node 24 runtime in etcher-util 13.5, and each native
+      # module whatever deployment target it was compiled with. The checked
+      # natives include the ones pkg packed into etcher-util's snapshot.
+      - name: Check every binary runs on macOS 13.5
+        run: |
+          APP=$(find out -name 'HexOS Imager.app' -maxdepth 4 | head -1)
+          [ -n "$APP" ] || { echo 'no .app produced'; exit 1; }
+          npx ts-node --transpile-only macos-min.ts ${{ matrix.arch }} 13.5 "$APP"
+
       # x64 launches under Rosetta, installed above.
       - name: Smoke launch and screenshot
         run: |
@@ -409,22 +426,21 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/notary/AuthKey.p8" || true
 
-  # The x64 DMG on Intel hardware. macos-15-intel is the last Intel image
-  # GitHub offers and is supported until August 2027; after that, drop this
-  # job and rely on the Rosetta smoke in the macos job.
+  # The x64 DMG on Intel hardware. macos-26-large is GitHub's Intel larger
+  # runner (billed per minute); macos-15-intel was the last free Intel image.
   macos-intel:
     name: macOS x64 on Intel (smoke)
     needs: macos
-    runs-on: macos-15-intel
+    runs-on: macos-26-large
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
-      # 22 for its built-in WebSocket client, which is all the smoke script
+      # Node for its built-in WebSocket client, which is all the smoke script
       # needs, so this job skips npm ci
       - uses: actions/setup-node@v7
         with:
-          node-version: 22.x
+          node-version: ${{ env.NODE_VERSION }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -472,8 +488,10 @@ jobs:
         include:
           - arch: x64
             runner: ubuntu-22.04
+          # 22.04 on both: natives compiled on 24.04 link against its newer
+          # libstdc++ and fail to dlopen on 22.04, which the smoke step checks
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v7
 
@@ -496,6 +514,27 @@ jobs:
         run: npm run make -- --arch=${{ matrix.arch }}
         env:
           NODE_ENV: production
+
+      # etcher-util must start reliably: upstream saw a badly built Node.js
+      # base binary crash intermittently while pkg unpacked its native addons
+      # (upstream 20c3024e). Start it five times with an empty pkg cache on a
+      # stock Ubuntu 22.04, then have it answer a drive scan on the runner.
+      - name: Smoke test etcher-util
+        run: |
+          BIN=out/sidecar/bin/${{ matrix.arch }}/etcher-util
+          objdump -T "$BIN" | grep -oE 'GLIBC(XX)?_[0-9.]+' | sort -uV | tail -n 3
+          for i in 1 2 3 4 5; do
+            docker run --rm -v "$PWD/$BIN:/etcher-util:ro" ubuntu:22.04 \
+              timeout 60 /etcher-util > etcher-util.log 2>&1 || true
+            if ! grep -q 'waiting for connection' etcher-util.log; then
+              echo "etcher-util failed to start (attempt $i)"
+              grep -m 3 -E 'Error|GLIBC|not found' etcher-util.log || true
+              tail -n 5 etcher-util.log
+              exit 1
+            fi
+          done
+          rm etcher-util.log
+          node scripts/smoke-sidecar.js "$BIN"
 
       - name: List artifacts
         run: find out/make -type f \( -name '*.deb' -o -name '*.rpm' \) -exec ls -la {} \;
