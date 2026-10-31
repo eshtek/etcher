@@ -143,6 +143,19 @@ function isLoadedOn(
 	platform: string,
 	arch: string,
 ): boolean {
+	// napi-rs packages (Electron 44's @electron-internal/extract-zip) ship
+	// every target side by side as <name>.<platform>-<arch>[-<abi>].node and
+	// load only the one matching the running process
+	const napi =
+		/\.(darwin|linux|win32|freebsd|android)-(universal|x64|arm64|ia32|arm)(-[a-z0-9]+)?\.node$/.exec(
+			rel,
+		);
+	if (napi != null) {
+		return (
+			napi[1] === platform &&
+			(napi[2] === arch || (napi[2] === 'universal' && platform === 'darwin'))
+		);
+	}
 	const parts = rel.split(path.sep);
 	const i = parts.indexOf('prebuilds');
 	if (i === -1) {
