@@ -14,7 +14,7 @@
     "url": "git@github.com:eshtek/etcher.git"
   },
   "scripts": {
-    "prettify": "prettier --write lib/**/*.css && balena-lint --fix --typescript typings lib tests forge.config.ts forge.sidecar.ts native-arch.ts webpack.config.ts",
+    "prettify": "prettier --write lib/**/*.css && balena-lint --fix --typescript typings lib tests forge.config.ts forge.sidecar.ts native-arch.ts macos-min.ts webpack.config.ts",
     "lint": "npm run prettify && catch-uncommitted",
     "test": "echo 'Only use custom tests; if you want to test locally, use `npm run wdio`' && exit 0",
     "package": "electron-forge package",

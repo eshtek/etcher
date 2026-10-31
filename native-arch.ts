@@ -12,7 +12,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MACHO_CPU: Record<number, string> = {
+export const MACHO_CPU: Record<number, string> = {
 	0x7: 'ia32',
 	0xc: 'arm',
 	0x01000007: 'x64',
@@ -187,13 +187,18 @@ export function findMismatchedNatives(
 	return findMismatchedIn(productionPackageDirs(root), platform, arch, root);
 }
 
-export function findMismatchedIn(
+interface LoadedNative {
+	/** package directory */
+	dir: string;
+	file: string;
+}
+
+function loadedNativesIn(
 	packageDirs: string[],
 	platform: string,
 	arch: string,
-	root: string,
-): Mismatch[] {
-	const mismatched: Mismatch[] = [];
+): LoadedNative[] {
+	const loaded: LoadedNative[] = [];
 	for (const dir of packageDirs) {
 		if (!fs.existsSync(dir)) {
 			continue;
@@ -202,21 +207,43 @@ export function findMismatchedIn(
 		const buildDir = path.join('build', 'Release') + path.sep;
 		const pkgHasBuild = files.some((rel) => rel.startsWith(buildDir));
 		for (const rel of files) {
-			if (!isLoadedOn(rel, pkgHasBuild, platform, arch)) {
-				continue;
+			if (isLoadedOn(rel, pkgHasBuild, platform, arch)) {
+				loaded.push({ dir, file: path.join(dir, rel) });
 			}
-			const file = path.join(dir, rel);
-			const info = readBinaryInfo(file);
-			if (info?.platform !== platform || !info.archs.includes(arch)) {
-				const pkgJson = path.join(dir, 'package.json');
-				mismatched.push({
-					pkg: JSON.parse(fs.readFileSync(pkgJson, 'utf8')).name,
-					file: path.relative(root, file),
-					found: info
-						? `${info.platform}/${info.archs.join('+')}`
-						: 'unrecognized',
-				});
-			}
+		}
+	}
+	return loaded;
+}
+
+/** Native binaries of production dependencies that the target would load. */
+export function findLoadedNatives(
+	platform: string,
+	arch: string,
+	root = process.cwd(),
+): string[] {
+	return loadedNativesIn(productionPackageDirs(root), platform, arch).map(
+		(n) => n.file,
+	);
+}
+
+export function findMismatchedIn(
+	packageDirs: string[],
+	platform: string,
+	arch: string,
+	root: string,
+): Mismatch[] {
+	const mismatched: Mismatch[] = [];
+	for (const { dir, file } of loadedNativesIn(packageDirs, platform, arch)) {
+		const info = readBinaryInfo(file);
+		if (info?.platform !== platform || !info.archs.includes(arch)) {
+			const pkgJson = path.join(dir, 'package.json');
+			mismatched.push({
+				pkg: JSON.parse(fs.readFileSync(pkgJson, 'utf8')).name,
+				file: path.relative(root, file),
+				found: info
+					? `${info.platform}/${info.archs.join('+')}`
+					: 'unrecognized',
+			});
 		}
 	}
 	return mismatched;

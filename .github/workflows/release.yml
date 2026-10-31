@@ -242,9 +242,10 @@ jobs:
     # completes and the Developer ID cert is in repo secrets. Flip the repo
     # variable APPLE_SIGNING_ENABLED to 'true' to arm these jobs.
     if: vars.APPLE_SIGNING_ENABLED == 'true'
-    # macos-14 images retire on 2026-11-02 and fail during brownouts before
-    # that (actions/runner-images#13518)
-    runs-on: macos-15
+    # The runner's macOS doesn't set the app's floor (the check after the
+    # build does), so this tracks the newest image. macos-14 retires on
+    # 2026-11-02 (actions/runner-images#13518).
+    runs-on: macos-26
     # Apple's notary queue is not bounded by anything we control: a first
     # submission sat In Progress for five and a half hours on 2026-09-01 with
     # the developer system status page green throughout. GitHub's default job
@@ -335,6 +336,16 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
+      # The app runs on the oldest macOS any of its binaries allows: Electron 44
+      # needs 13.0, the Node 24 runtime in etcher-util 13.5, and each native
+      # module whatever deployment target it was compiled with. The checked
+      # natives include the ones pkg packed into etcher-util's snapshot.
+      - name: Check every binary runs on macOS 13.5
+        run: |
+          APP=$(find out -name 'HexOS Imager.app' -maxdepth 4 | head -1)
+          [ -n "$APP" ] || { echo 'no .app produced'; exit 1; }
+          npx ts-node --transpile-only macos-min.ts ${{ matrix.arch }} 13.5 "$APP"
+
       # x64 launches under Rosetta, installed above.
       - name: Smoke launch and screenshot
         run: |
@@ -415,13 +426,12 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/notary/AuthKey.p8" || true
 
-  # The x64 DMG on Intel hardware. macos-15-intel is the last Intel image
-  # GitHub offers and is supported until August 2027; after that, drop this
-  # job and rely on the Rosetta smoke in the macos job.
+  # The x64 DMG on Intel hardware. macos-26-large is GitHub's Intel larger
+  # runner (billed per minute); macos-15-intel was the last free Intel image.
   macos-intel:
     name: macOS x64 on Intel (smoke)
     needs: macos
-    runs-on: macos-15-intel
+    runs-on: macos-26-large
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
