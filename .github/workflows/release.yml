@@ -476,8 +476,10 @@ jobs:
         include:
           - arch: x64
             runner: ubuntu-22.04
+          # 22.04 on both: natives compiled on 24.04 link against its newer
+          # libstdc++ and fail to dlopen on 22.04, which the smoke step checks
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v7
 
@@ -514,6 +516,7 @@ jobs:
               timeout 60 /etcher-util > etcher-util.log 2>&1 || true
             if ! grep -q 'waiting for connection' etcher-util.log; then
               echo "etcher-util failed to start (attempt $i)"
+              grep -m 3 -E 'Error|GLIBC|not found' etcher-util.log || true
               tail -n 5 etcher-util.log
               exit 1
             fi
