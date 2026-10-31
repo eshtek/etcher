@@ -105,7 +105,10 @@
   },
   "overrides": {
     "@electron/node-gyp": "npm:node-gyp@^12.4.0",
-    "@electron/windows-sign": "^1.2.2"
+    "@electron/windows-sign": "^1.2.2",
+    "lzma-native": {
+      "node-addon-api": "8.0.0"
+    }
   },
   "hostDependencies": {
     "debian": [
