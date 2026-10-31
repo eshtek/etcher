@@ -242,7 +242,9 @@ jobs:
     # completes and the Developer ID cert is in repo secrets. Flip the repo
     # variable APPLE_SIGNING_ENABLED to 'true' to arm these jobs.
     if: vars.APPLE_SIGNING_ENABLED == 'true'
-    runs-on: macos-14
+    # macos-14 images retire on 2026-11-02 and fail during brownouts before
+    # that (actions/runner-images#13518)
+    runs-on: macos-15
     # Apple's notary queue is not bounded by anything we control: a first
     # submission sat In Progress for five and a half hours on 2026-09-01 with
     # the developer system status page green throughout. GitHub's default job
