@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: 22.x
+  NODE_VERSION: 24.x
   # Pin the Artifact Signing client. Verify the current version on nuget.org
   # before the first real release; the package kept its Trusted Signing name
   # through the 2026 rename.
@@ -30,7 +30,7 @@ jobs:
     # @electron/node-gyp matches VS by a hardcoded list of version years and
     # rejects 18 as unsupported, so mountutils fails to build during npm ci.
     runs-on: windows-2022
-    # A healthy run takes 16-20 minutes on Node 22, about 11 of them in the
+    # A healthy run takes 16-20 minutes, about 11 of them in the
     # build step. That step has its own limit so a signing hang still leaves
     # time to upload the log.
     timeout-minutes: 30
@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      # The sidecar (etcher-util) embeds Node 22 via pkg; native modules
+      # The sidecar (etcher-util) embeds Node 24 via pkg; native modules
       # must be compiled against the same major version or the sidecar
       # segfaults on startup.
       - uses: actions/setup-node@v7
@@ -420,11 +420,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # 22 for its built-in WebSocket client, which is all the smoke script
+      # Node for its built-in WebSocket client, which is all the smoke script
       # needs, so this job skips npm ci
       - uses: actions/setup-node@v7
         with:
-          node-version: 22.x
+          node-version: ${{ env.NODE_VERSION }}
 
       - uses: actions/download-artifact@v8
         with:

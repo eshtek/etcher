@@ -73,14 +73,24 @@ const config: ForgeConfig = {
 		appCategoryType: 'public.app-category.utilities',
 		appCopyright: 'Copyright 2026 Eshtek Inc.',
 		darwinDarkModeSupport: true,
+		// Electron 44 needs macOS 13 and the Node 24 runtime inside etcher-util
+		// needs 13.5. Declaring it lets Finder refuse to open the app on an older
+		// Mac instead of the helper failing at the first flash.
+		extendInfo: { LSMinimumSystemVersion: '13.5' },
 		protocols: [{ name: 'hexos-imager', schemes: ['hexos-imager'] }],
 		extraResource: [
 			'lib/shared/sudo/sudo-askpass.osascript-zh.js',
 			'lib/shared/sudo/sudo-askpass.osascript-en.js',
 		],
 		osxSign: {
-			optionsForFile: () => ({
-				entitlements: './entitlements.mac.plist',
+			// `etcher-util` is the privileged helper invoked under sudo to write
+			// raw disk images: it gets its own entitlements, restricted to the
+			// minimum a pkg-bundled Node.js binary needs to run (JIT + loading its
+			// extracted native addons), rather than inheriting the main app's.
+			optionsForFile: (filePath: string) => ({
+				entitlements: filePath.endsWith('/etcher-util')
+					? './entitlements.mac.util.plist'
+					: './entitlements.mac.plist',
 				hardenedRuntime: true,
 			}),
 		},
