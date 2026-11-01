@@ -25,9 +25,9 @@ const clearUserPath = (filename: string): string => {
 	return generatedFile !== filename ? `generated${generatedFile}` : filename;
 };
 
-export const anonymizeSentryData = (
-	event: SentryRenderer.Event,
-): SentryRenderer.Event => {
+export const anonymizeSentryData = <T extends SentryRenderer.Event>(
+	event: T,
+): T => {
 	event.exception?.values?.forEach((exception) => {
 		exception.stacktrace?.frames?.forEach((frame) => {
 			if (frame.filename) {
