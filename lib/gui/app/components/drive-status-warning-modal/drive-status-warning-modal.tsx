@@ -1,8 +1,8 @@
 import ExclamationTriangleSvg from '@fortawesome/fontawesome-free/svgs/solid/triangle-exclamation.svg';
 import * as React from 'react';
-import type { ModalProps } from 'rendition';
-import { Badge, Flex, Txt } from 'rendition';
 import { Modal, ScrollableFlex } from '../../styled-components';
+import type { ModalProps } from '../ui';
+import { Badge, Flex, Txt } from '../ui';
 import { middleEllipsis } from '../../utils/middle-ellipsis';
 
 import prettyBytes from 'pretty-bytes';

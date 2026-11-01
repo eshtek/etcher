@@ -5,11 +5,11 @@
  */
 
 import * as React from 'react';
-import { Flex, Spinner, Txt, ProgressBar } from 'rendition';
 import prettyBytes from 'pretty-bytes';
 import * as i18next from 'i18next';
 
 import { Modal } from '../../styled-components';
+import { Flex, Spinner, Txt, ProgressBar } from '../ui';
 import type {
 	DownloadProgress,
 	HexOSImageEntry,

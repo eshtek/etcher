@@ -15,31 +15,46 @@
  */
 
 import * as React from 'react';
+import styled, { css, ThemeProvider } from 'styled-components';
+
 import type {
 	FlexProps,
 	ButtonProps,
 	TableProps as BaseTableProps,
-} from 'rendition';
+} from './components/ui';
 import {
-	Alert as AlertBase,
+	Box,
 	Flex,
 	Button,
+	deckGradient,
+	font,
 	Modal as ModalBase,
-	Provider,
+	palette,
 	Table as BaseTable,
 	Txt,
-} from 'rendition';
-import styled, { css } from 'styled-components';
-
+} from './components/ui';
 import { colors, theme } from './theme';
 
-export const ThemedProvider = (props: any) => (
-	<Provider theme={theme} {...props}></Provider>
-);
+export { deckGradient };
 
-// Deck UI's primary button: brand gradient (accent → primary, the logo's
-// own stops), collapsing to solid primary on hover
-export const deckGradient = 'linear-gradient(135deg, #cb2eff, #7f35b2)';
+const ProviderRoot = styled.div`
+	box-sizing: border-box;
+	font-family: ${font};
+	font-size: 14px;
+	line-height: 1.5;
+	color: ${palette.text};
+	-webkit-text-size-adjust: 100%;
+	-webkit-font-smoothing: antialiased;
+`;
+
+export const ThemedProvider = ({
+	children,
+	...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+	<ThemeProvider theme={theme}>
+		<ProviderRoot {...props}>{children}</ProviderRoot>
+	</ThemeProvider>
+);
 
 export const BaseButton = styled(Button)`
 	width: 200px;
@@ -174,7 +189,7 @@ export const Modal = styled(({ style, children, ...props }) => {
 			{...props}
 		>
 			<ScrollableFlex flexDirection="column" width="100%" height="90%">
-				{children.length ? children.map((c: any) => <>{c}</>) : children}
+				{children}
 			</ScrollableFlex>
 		</ModalBase>
 	);
@@ -235,8 +250,16 @@ export const ScrollableFlex = styled(Flex)`
 	}
 `;
 
-export const Alert = styled((props) => (
-	<AlertBase warning emphasized {...props}></AlertBase>
+// A warning banner pinned above the dialog that contains it
+export const Alert = styled(({ children, ...props }: FlexProps) => (
+	<Flex {...props}>
+		<Box flex={1}>
+			<Txt.span bold mr={1}>
+				Warning!
+			</Txt.span>
+			<Txt.span>{children}</Txt.span>
+		</Box>
+	</Flex>
 ))`
 	position: fixed;
 	top: -40px;
@@ -250,17 +273,16 @@ export const Alert = styled((props) => (
 	font-size: 14px;
 	background-color: #fca321;
 	text-align: center;
+	border: 1px solid #fca321;
+	border-radius: 10px;
+	box-shadow: 0 0 10px 0 rgba(221, 225, 240, 0.15);
 
 	* {
 		color: #ffffff;
 	}
-
-	> div:first-child {
-		display: none;
-	}
 `;
 
-export interface GenericTableProps<T> extends BaseTableProps<T> {
+export interface GenericTableProps<T extends object> extends BaseTableProps<T> {
 	refFn: (t: BaseTable<T>) => void;
 	data: T[];
 	checkedRowsNumber?: number;
@@ -268,7 +290,7 @@ export interface GenericTableProps<T> extends BaseTableProps<T> {
 	showWarnings?: boolean;
 }
 
-function GenericTable<T>(
+function GenericTable<T extends object>(
 	props: GenericTableProps<T>,
 ): React.ReactElement<GenericTableProps<T>> {
 	return (
@@ -278,7 +300,7 @@ function GenericTable<T>(
 	);
 }
 
-function StyledTable<T>() {
+function StyledTable<T extends object>() {
 	return styled((props: GenericTableProps<T>) => (
 		<GenericTable<T> {...props} />
 	))`

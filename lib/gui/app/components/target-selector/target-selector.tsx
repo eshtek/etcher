@@ -15,7 +15,6 @@
  */
 
 import * as React from 'react';
-import { Flex, Txt } from 'rendition';
 
 import type { DriveSelectorProps } from '../drive-selector/drive-selector';
 import { DriveSelector } from '../drive-selector/drive-selector';
@@ -27,6 +26,7 @@ import {
 	deselectAllDrives,
 } from '../../models/selection-state';
 import { observe } from '../../models/store';
+import { Flex, Txt } from '../ui';
 import { TargetSelectorButton } from './target-selector-button';
 
 import TgtSvg from '../../../assets/tgt.svg';

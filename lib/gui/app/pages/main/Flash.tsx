@@ -18,11 +18,11 @@ import CircleSvg from '@fortawesome/fontawesome-free/svgs/solid/circle.svg';
 import * as _ from 'lodash';
 import * as path from 'path';
 import * as React from 'react';
-import { Flex, Modal as SmallModal, Txt } from 'rendition';
 
 import * as constraints from '../../../../shared/drive-constraints';
 import * as messages from '../../../../shared/messages';
 import { ProgressButton } from '../../components/progress-button/progress-button';
+import { Flex, Modal as SmallModal, Txt } from '../../components/ui';
 import * as availableDrives from '../../models/available-drives';
 import * as flashState from '../../models/flash-state';
 import * as selection from '../../models/selection-state';
