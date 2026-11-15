@@ -16,6 +16,8 @@ import type {
 } from '../../modules/hexos-image';
 import {
 	ChecksumMismatchError,
+	SignatureUnavailableError,
+	SignatureVerificationError,
 	ensureImage,
 	fetchManifest,
 	getLatestImage,
@@ -118,10 +120,14 @@ export const HexOSDownload = ({
 				return;
 			}
 			console.error('HexOS download failed:', error);
-			const errorMessage =
-				error instanceof ChecksumMismatchError
-					? i18next.t('hexos.checksumMismatch')
-					: `${i18next.t('hexos.downloadFailed')}: ${error?.message ?? error}`;
+			let errorMessage = `${i18next.t('hexos.downloadFailed')}: ${error?.message ?? error}`;
+			if (error instanceof ChecksumMismatchError) {
+				errorMessage = i18next.t('hexos.checksumMismatch');
+			} else if (error instanceof SignatureUnavailableError) {
+				errorMessage = i18next.t('hexos.signatureUnavailable');
+			} else if (error instanceof SignatureVerificationError) {
+				errorMessage = i18next.t('hexos.signatureInvalid');
+			}
 			setState((s) => ({ ...s, phase: 'error', errorMessage }));
 		}
 	};

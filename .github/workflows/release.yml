@@ -510,6 +510,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test image download verification
+        run: npm run test:hexos-image
+
       - name: Build distributables (deb + rpm)
         run: npm run make -- --arch=${{ matrix.arch }}
         env:

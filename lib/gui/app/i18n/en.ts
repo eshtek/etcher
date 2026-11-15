@@ -167,12 +167,17 @@ const translation = {
 			size: 'Download size',
 			startDownload: 'Download and verify',
 			downloading: 'Downloading HexOS...',
-			verifying: 'Verifying checksum...',
-			verified: 'Checksum verified',
-			usingExisting: 'Found an existing verified download, skipping re-download.',
+			verifying: 'Verifying checksum and signature...',
+			verified: 'Checksum and signature verified',
+			usingExisting:
+				'Found an existing verified download, skipping re-download.',
 			downloadFailed: 'Download failed',
 			checksumMismatch:
 				'The downloaded file failed checksum verification. The file has been deleted — please try again.',
+			signatureInvalid:
+				'This download could not be verified as an official HexOS image, so it was not used. Please try again later. If this keeps happening, contact HexOS support.',
+			signatureUnavailable:
+				'The signature for this HexOS image is not available yet, so the image cannot be verified and nothing was downloaded. Please try again later.',
 			manifestError:
 				'Could not fetch the HexOS release list. Check your internet connection and try again, or download the ISO manually from {{url}}.',
 			outdatedImager:

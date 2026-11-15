@@ -246,8 +246,9 @@ function setup(): Promise<EmitLog> {
 				} catch (error: any) {
 					log(`download failed: ${error?.message ?? error}`);
 					// The class identity does not survive the wire, so send the
-					// name too: the client rebuilds ChecksumMismatchError from it
-					// to keep its "bad publish, don't retry" handling.
+					// name too: the client rebuilds ChecksumMismatchError and
+					// the signature errors from it to keep its "bad publish,
+					// don't retry" handling.
 					emit(
 						'downloadError',
 						JSON.stringify({

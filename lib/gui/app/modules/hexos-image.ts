@@ -28,6 +28,9 @@
  *   ]
  * }
  *
+ * Every image also needs its detached OpenPGP signature published at
+ * `<url>.gpg`; the download is refused without one.
+ *
  * All network/hash logic lives in shared/hexos-image-core.ts (pure Node) and
  * runs in the sidecar process; this module only resolves URLs from settings
  * and the destination path from Electron's downloads directory, then hands
@@ -38,7 +41,11 @@ import { join } from 'path';
 import * as semver from 'semver';
 
 import { requestImageDownload, waitForSidecar } from '../app';
-import { ChecksumMismatchError } from '../../../shared/hexos-image-core';
+import {
+	ChecksumMismatchError,
+	SignatureUnavailableError,
+	SignatureVerificationError,
+} from '../../../shared/hexos-image-core';
 
 import { version as appVersion } from '../../../../package.json';
 import * as settings from '../models/settings';
@@ -55,7 +62,12 @@ export type {
 	HexOSManifest,
 	ProgressCallback,
 } from '../../../shared/hexos-image-core';
-export { ChecksumMismatchError, getLatestImage } from '../../../shared/hexos-image-core';
+export {
+	ChecksumMismatchError,
+	SignatureUnavailableError,
+	SignatureVerificationError,
+	getLatestImage,
+} from '../../../shared/hexos-image-core';
 
 /**
  * Short on purpose: this is the budget before falling back to the static
@@ -73,7 +85,9 @@ export interface ManifestResult {
 
 export async function getChannel(): Promise<string> {
 	return (
-		process.env.HEXOS_CHANNEL || (await settings.get('hexosChannel')) || 'stable'
+		process.env.HEXOS_CHANNEL ||
+		(await settings.get('hexosChannel')) ||
+		'stable'
 	);
 }
 
@@ -166,6 +180,16 @@ export async function ensureImage(
 		// telling a bad publish apart from a flaky transfer.
 		if (error?.name === 'ChecksumMismatchError') {
 			throw new ChecksumMismatchError(entry.sha256, '(reported by helper)');
+		}
+		if (error?.name === 'SignatureUnavailableError') {
+			throw new SignatureUnavailableError(
+				String(error.message).replace(/^Signature unavailable: /, ''),
+			);
+		}
+		if (error?.name === 'SignatureVerificationError') {
+			throw new SignatureVerificationError(
+				String(error.message).replace(/^Signature verification failed: /, ''),
+			);
 		}
 		throw error;
 	}
