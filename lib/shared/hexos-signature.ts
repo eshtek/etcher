@@ -11,8 +11,10 @@ import * as openpgp from 'openpgp';
 
 import type { TrustedSigningKey } from './hexos-signing-keys';
 import {
+	MAX_TRUSTED_SIGNING_KEYS,
 	OLDEST_ACCEPTED_SIGNATURE,
 	TRUSTED_SIGNING_KEYS,
+	isPinnedSigningKey,
 } from './hexos-signing-keys';
 
 export type { TrustedSigningKey } from './hexos-signing-keys';
@@ -70,9 +72,23 @@ export async function parseSignature(
 	return [...signature.packets];
 }
 
+/** Throws unless the list holds one or two real, pinned keys. */
+export function checkTrustedKeys(trusted: TrustedSigningKey[]): void {
+	if (trusted.length < 1 || trusted.length > MAX_TRUSTED_SIGNING_KEYS) {
+		throw new Error(`expected one or two signing keys, got ${trusted.length}`);
+	}
+	const unpinned = trusted.find((key) => !isPinnedSigningKey(key));
+	if (unpinned !== undefined) {
+		throw new Error(
+			`the HexOS signing key "${unpinned.owner}" is not pinned in this build (placeholder, or not a v4 fingerprint and armored public key), so no image can be verified`,
+		);
+	}
+}
+
 export async function loadTrustedKeys(
 	trusted: TrustedSigningKey[] = TRUSTED_SIGNING_KEYS,
 ): Promise<openpgp.PublicKey[]> {
+	checkTrustedKeys(trusted);
 	return Promise.all(
 		trusted.map(async ({ fingerprint, armoredKey }) => {
 			const key = await openpgp.readKey({ armoredKey });
@@ -149,7 +165,7 @@ export async function selectCandidates(
 				continue;
 			}
 			if (packet.created < policy.notBefore) {
-				reason = 'the signature is older than the oldest supported release';
+				reason = 'the signature predates the HexOS signing key';
 				continue;
 			}
 			let signingKey;

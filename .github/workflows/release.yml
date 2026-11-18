@@ -510,6 +510,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The imager refuses every image while the HexOS key is a placeholder,
+      # so a release must not be built from such a tree. publish needs this job.
+      - name: Refuse to release without the HexOS signing key
+        run: npm run check:hexos-signing-key
+
       - name: Test image download verification
         run: npm run test:hexos-image
 

@@ -1,8 +1,15 @@
 /*
  * OpenPGP keys trusted to sign HexOS installer images.
  *
- * Trust is the full primary-key fingerprint. Add a key by appending an entry
- * here; the embedded copy must hash to the fingerprint beside it.
+ * HexOS verifies iX's signature and sha256 on each ISO in its own release
+ * process, applies its changes, then signs the result with the HexOS key.
+ * The imager trusts that key only. iX's key is not trusted here, so every
+ * image in the manifest, old ones included, needs a HexOS signature.
+ *
+ * Trust is the full primary-key fingerprint, and the embedded copy must hash
+ * to it. The key must be an OpenPGP v4 key (40-hex-digit fingerprint), and
+ * images must carry v4 signatures. At most two keys are trusted at once so a new key can be pinned
+ * beside the current one before a rotation.
  */
 
 export interface TrustedSigningKey {
@@ -11,71 +18,51 @@ export interface TrustedSigningKey {
 	armoredKey: string;
 }
 
+export const MAX_TRUSTED_SIGNING_KEYS = 2;
+
 /**
- * Signatures made before this date are refused, so an image from before the
- * first HexOS release cannot be served to this build. The download dialog
- * lets users pick any version the manifest lists, so this can only move
- * forward as old versions are retired from the manifest.
+ * Stands in for the HexOS key until it exists. A key with this fingerprint,
+ * or any value that is not a 40-hex-digit fingerprint, makes every
+ * verification fail.
  */
-export const OLDEST_ACCEPTED_SIGNATURE = new Date('2024-11-01T00:00:00Z');
+export const PLACEHOLDER_SIGNING_KEY: TrustedSigningKey = Object.freeze({
+	owner: 'PLACEHOLDER: HexOS release signing key not generated yet',
+	fingerprint: 'PLACEHOLDER-HEXOS-SIGNING-KEY-FINGERPRINT',
+	armoredKey: 'PLACEHOLDER: paste the armored HexOS public key here',
+});
+
+/**
+ * The HexOS release signing key. Replace the placeholder with
+ * `{ owner, fingerprint, armoredKey }` for the real public key, and set
+ * OLDEST_ACCEPTED_SIGNATURE to the key's creation date.
+ */
+export const HEXOS_SIGNING_KEY: TrustedSigningKey = PLACEHOLDER_SIGNING_KEY;
+
+/**
+ * The next HexOS key during a rotation: pin it here in an imager release
+ * before the first image signed with it, then move it to HEXOS_SIGNING_KEY
+ * once nothing in the manifest is signed by the old one.
+ */
+export const HEXOS_NEXT_SIGNING_KEY: TrustedSigningKey | undefined = undefined;
 
 export const TRUSTED_SIGNING_KEYS: TrustedSigningKey[] = [
-	{
-		owner: 'IX SecTeam <security-officer@ixsystems.com>',
-		fingerprint: 'C8D62DEF767C1DB0DFF4E6EC358EAA9112CF7946',
-		armoredKey: `
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-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
-iZeVdjdZsEMQK1ew+xRjX74w9w==
-=npgK
------END PGP PUBLIC KEY BLOCK-----
-`,
-	},
+	HEXOS_SIGNING_KEY,
+	...(HEXOS_NEXT_SIGNING_KEY === undefined ? [] : [HEXOS_NEXT_SIGNING_KEY]),
 ];
+
+/**
+ * A sanity floor: no HexOS-key signature can predate this design. Every
+ * image is re-signed when it is published, so a signature's date says when
+ * it was signed, not which release it is, and this date cannot tell
+ * versions apart. Raise it to the HexOS key's creation date when the key is
+ * pinned.
+ */
+export const OLDEST_ACCEPTED_SIGNATURE = new Date('2026-11-01T00:00:00Z');
+
+export function isPinnedSigningKey(key: TrustedSigningKey): boolean {
+	return (
+		key !== PLACEHOLDER_SIGNING_KEY &&
+		/^[0-9A-F]{40}$/i.test(key.fingerprint) &&
+		key.armoredKey.includes('-----BEGIN PGP PUBLIC KEY BLOCK-----')
+	);
+}

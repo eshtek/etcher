@@ -25,8 +25,12 @@ import {
 } from '../../lib/shared/hexos-signature';
 import type { TrustedSigningKey } from '../../lib/shared/hexos-signing-keys';
 import {
+	HEXOS_SIGNING_KEY,
+	MAX_TRUSTED_SIGNING_KEYS,
 	OLDEST_ACCEPTED_SIGNATURE,
+	PLACEHOLDER_SIGNING_KEY,
 	TRUSTED_SIGNING_KEYS,
+	isPinnedSigningKey,
 } from '../../lib/shared/hexos-signing-keys';
 
 const IX_FINGERPRINT = 'C8D62DEF767C1DB0DFF4E6EC358EAA9112CF7946';
@@ -207,21 +211,96 @@ describe('Shared: HexOS image core', function () {
 	});
 
 	describe('embedded signing key', function () {
-		it('matches the pinned iX fingerprint', async function () {
-			expect(TRUSTED_SIGNING_KEYS.map((key) => key.fingerprint)).to.deep.equal([
-				IX_FINGERPRINT,
-			]);
+		it('trusts only HexOS keys, never the iX key', async function () {
+			expect(TRUSTED_SIGNING_KEYS[0]).to.equal(HEXOS_SIGNING_KEY);
+			expect(TRUSTED_SIGNING_KEYS.length).to.be.within(
+				1,
+				MAX_TRUSTED_SIGNING_KEYS,
+			);
+			expect(MAX_TRUSTED_SIGNING_KEYS).to.equal(2);
+			expect(
+				TRUSTED_SIGNING_KEYS.map((key) => key.fingerprint.toUpperCase()),
+			).to.not.include(IX_FINGERPRINT);
+			expect(
+				TRUSTED_SIGNING_KEYS.map((key) => key.armoredKey).join('\n'),
+			).to.not.match(/ixsystems/i);
+		});
+
+		it('loads every built-in key once the real key is pinned', async function () {
+			if (!TRUSTED_SIGNING_KEYS.every(isPinnedSigningKey)) {
+				this.skip();
+			}
 			const keys = await loadTrustedKeys();
 			expect(
 				keys.map((key) => key.getFingerprint().toUpperCase()),
-			).to.deep.equal([IX_FINGERPRINT]);
+			).to.deep.equal(
+				TRUSTED_SIGNING_KEYS.map((key) => key.fingerprint.toUpperCase()),
+			);
+		});
+
+		it('refuses a pinned-looking key that does not load, before any request', async function () {
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/${ISO_NAME}.gpg`, { body: goodSignature });
+			const error = await failureOf(
+				ensure(entryFor(iso), [
+					{ ...stranger.trusted, fingerprint: signer.trusted.fingerprint },
+				]),
+			);
+			expect(error).to.be.instanceOf(SignatureVerificationError);
+			expect(error.message).to.match(/does not match fingerprint/);
+			expect(hits).to.deep.equal([]);
+		});
+
+		// Remove this tripwire in the change that pins the real HexOS key.
+		it('is still the placeholder in this build', function () {
+			expect(HEXOS_SIGNING_KEY).to.equal(PLACEHOLDER_SIGNING_KEY);
+		});
+
+		it('fails closed with the built-in keys while the placeholder is pinned', async function () {
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/${ISO_NAME}.gpg`, { body: goodSignature });
+			await fs.writeFile(dest, iso);
+			await fs.writeFile(`${dest}.gpg`, goodSignature);
+			const error = await failureOf(
+				ensureImageAt(entryFor(iso), dest, () => undefined),
+			);
+			expect(error).to.be.instanceOf(SignatureVerificationError);
+			expect(error.message).to.match(/signing key .* is not pinned/);
+			expect(hits).to.deep.equal([]);
+		});
+
+		it('fails closed when the placeholder is passed in', async function () {
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/${ISO_NAME}.gpg`, { body: goodSignature });
+			for (const trustedKeys of [
+				[PLACEHOLDER_SIGNING_KEY],
+				[signer.trusted, PLACEHOLDER_SIGNING_KEY],
+				[{ ...signer.trusted, fingerprint: 'not-a-fingerprint' }],
+			]) {
+				const error = await failureOf(ensure(entryFor(iso), trustedKeys));
+				expect(error).to.be.instanceOf(SignatureVerificationError);
+				expect(error.message).to.match(/signing key .* is not pinned/);
+			}
+			expect(hits).to.deep.equal([]);
+			await expectNothingKept();
+		});
+
+		it('refuses an empty trust list or more than two keys', async function () {
+			const third = await makeKey();
+			for (const trustedKeys of [
+				[],
+				[signer.trusted, stranger.trusted, third.trusted],
+			]) {
+				const error = await failureOf(loadTrustedKeys(trustedKeys));
+				expect(error.message).to.match(/one or two signing keys/);
+			}
 		});
 
 		it('is rejected when it does not hash to its pin', async function () {
 			const error = await failureOf(
 				loadTrustedKeys([
 					{
-						...TRUSTED_SIGNING_KEYS[0],
+						...stranger.trusted,
 						fingerprint: signer.trusted.fingerprint,
 					},
 				]),
@@ -517,13 +596,13 @@ describe('Shared: HexOS image core', function () {
 				ensure(entryFor(iso), [signer.trusted], tomorrow),
 			);
 			expect(error).to.be.instanceOf(SignatureVerificationError);
-			expect(error.message).to.match(/older than the oldest supported release/);
+			expect(error.message).to.match(/predates the HexOS signing key/);
 			expect(hits).to.not.include(`/${ISO_NAME}`);
 			expect(DEFAULT_SIGNATURE_POLICY.notBefore).to.equal(
 				OLDEST_ACCEPTED_SIGNATURE,
 			);
 			expect(OLDEST_ACCEPTED_SIGNATURE.toISOString()).to.equal(
-				'2024-11-01T00:00:00.000Z',
+				'2026-11-01T00:00:00.000Z',
 			);
 		});
 

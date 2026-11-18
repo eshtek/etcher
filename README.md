@@ -69,33 +69,45 @@ may return more than the static file does. An image may also carry
 The app sends `Cache-Control: no-cache` and a cache-busting query parameter,
 but keep the manifest's CDN TTL short regardless.
 
-When publishing a new release, upload the ISO and its `.gpg` signature to
+When publishing a new release, upload the ISO and its HexOS `.gpg` signature to
 every mirror first (the `url` host and the `fallbackUrl` host), then update
 the manifest. An image without a signature beside it cannot be downloaded by
 this app, and that includes older images still listed in the manifest.
 
 ### Image signatures
 
-The ISOs are built and signed by iXsystems, and each one is published with a
-detached OpenPGP signature (`gpg --detach-sign`, binary or armored) at the
-ISO's URL plus `.gpg`. The app verifies that signature with the iX SecTeam
-public key built into it (`lib/shared/hexos-signing-keys.ts`), pinned by its
-full fingerprint `C8D62DEF767C1DB0DFF4E6EC358EAA9112CF7946`. The manifest only
-says where a file is and what its hash should be.
+Each ISO starts as an iXsystems build. In the HexOS release process the ISO,
+its iX `.gpg` and its sha256 are checked first, then the HexOS changes (the
+web install) are applied, and the result is signed with the HexOS release
+key. The ISO, its new sha256 and its HexOS `.gpg` (`gpg --detach-sign`,
+binary or armored) are published to both mirrors at the ISO's URL plus
+`.gpg`. The app verifies that signature with the HexOS public key built into
+it (`HEXOS_SIGNING_KEY` in `lib/shared/hexos-signing-keys.ts`), pinned by its
+full fingerprint. iX's key is not trusted, so every image in the manifest,
+older ones included, has to be re-signed with the HexOS key. The manifest
+only says where a file is and what its hash should be.
 
-What this proves is that iXsystems signed the exact file. Someone who can
-change the manifest, the storage bucket or DNS cannot get a file accepted
-that iX did not sign, because they cannot produce the signature. It does not
-prove the file is the release the manifest names. The same person could
-still point an entry at a different image that carries a genuine iX
-signature: an older HexOS ISO, or anything else signed with that key. Two
-things narrow that. Signatures made before `OLDEST_ACCEPTED_SIGNATURE` in
-`hexos-signing-keys.ts` (2024-11-01, before the first HexOS ISO) are refused.
-The download dialog lets users pick any version the manifest lists, so that
-date has to stay behind the oldest listed image; raise it in an imager
-release when old versions are retired. The ISOs carry no cheap HexOS marker
-to check (their volume label is the generic `ISOIMAGE`), so a stock image
-signed after that date cannot be told apart from a HexOS one here.
+The HexOS key does not exist yet. Until it is pinned, `HEXOS_SIGNING_KEY`
+holds a placeholder and the app refuses every image with a "could not be
+verified" message before it makes any request. The same happens when a
+pinned key does not load or does not hash to its fingerprint. The release
+workflow's Linux job runs `npm run check:hexos-signing-key` and fails while
+the placeholder is in place, so no release can be published from such a
+tree. Pinning it means replacing the placeholder with the real
+`{ owner, fingerprint, armoredKey }` (an OpenPGP v4 public key, so a
+40-hex-digit fingerprint), setting `OLDEST_ACCEPTED_SIGNATURE` to the key's
+creation date, and removing the placeholder tripwire test. For a
+rotation, the new key goes in `HEXOS_NEXT_SIGNING_KEY` in an imager release
+before the first image signed with it; at most two keys are trusted at once.
+
+What this proves is that the HexOS release key signed the exact file.
+Someone who can change the manifest, the storage bucket or DNS cannot get a
+file accepted that HexOS did not sign. It does not prove the file is the
+release the manifest names: the same person could point an entry at an
+older image that also carries a HexOS signature. `OLDEST_ACCEPTED_SIGNATURE`
+does not help there, because every image is re-signed when it is published,
+so a signature's date says when it was signed, not which release it is. It
+only refuses signatures from before the key could exist.
 
 - If no signature is published for an image, the download is refused before
   any of the ISO is fetched, with a message that the signature is not
@@ -110,8 +122,8 @@ signed after that date cannot be told apart from a HexOS one here.
   that is an ordinary download failure and the user can retry.
 - No manifest field or setting turns verification off. `signatureUrl` can
   only add a location.
-- The built-in copy of the key cannot be refreshed, and iX extends the key's
-  expiry from time to time, so the key's expiry date is not enforced. A
+- The built-in copy of the key cannot be refreshed after a release, so the
+  key's expiry date is not enforced. A
   revoked key or one with an invalid self-signature is rejected. Trusting a
   new key means adding it to `hexos-signing-keys.ts` and shipping a new
   imager release, so do that before the first ISO signed with it.
@@ -125,8 +137,8 @@ Known limits:
 - A program already running as the user, with write access to the Downloads
   folder, can swap the file between verification and flashing. This check
   does not address that.
-- If iX revokes the key after an imager release, that release keeps trusting
-  it until an imager update removes it.
+- If the HexOS key is revoked after an imager release, that release keeps
+  trusting it until an imager update removes it.
 - The `.gpg` location is derived from the URL in the manifest, not from the
   URL the download was finally redirected to.
 - A signature's date is not compared with the computer's clock, so a

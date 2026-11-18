@@ -62,9 +62,10 @@ export class ChecksumMismatchError extends Error {
 }
 
 /**
- * The image has a signature but it does not hold: wrong signer, wrong file,
- * or not a signature at all. Never retried against another mirror once the
- * bytes are known to match the manifest.
+ * The image has a signature but it does not hold (wrong signer, wrong file,
+ * or not a signature at all); another mirror's signature is tried before
+ * this is thrown. Also thrown before any request when this build has no
+ * usable signing key to check with.
  */
 export class SignatureVerificationError extends Error {
 	constructor(reason: string) {
@@ -662,12 +663,19 @@ export async function ensureImageAt(
 	abortSignal?: AbortSignal,
 	policy?: SignaturePolicy,
 ): Promise<{ path: string; alreadyExisted: boolean }> {
+	const { loadTrustedKeys, startSignatureCheck, DEFAULT_SIGNATURE_POLICY } =
+		await signatureModule();
+	// Refuse before any request when there is no usable key to check with.
+	try {
+		await loadTrustedKeys((policy ?? DEFAULT_SIGNATURE_POLICY).trustedKeys);
+	} catch (error: any) {
+		throw new SignatureVerificationError(error.message);
+	}
 	if (
 		await verifyExistingFile(entry, destPath, onProgress, abortSignal, policy)
 	) {
 		return { path: destPath, alreadyExisted: true };
 	}
-	const { startSignatureCheck } = await signatureModule();
 	const partPath = `${destPath}.part`;
 	let unreachable: Error | undefined;
 	let unverifiable: SignatureVerificationError | undefined;
