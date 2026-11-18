@@ -342,6 +342,10 @@ async function hashFile(
 	abortSignal?: AbortSignal,
 	signatureSink?: Writable,
 ): Promise<string> {
+	if (abortSignal?.aborted) {
+		signatureSink?.destroy();
+		throw new Error('Aborted');
+	}
 	const hash = createHash('sha256');
 	const stream = createReadStream(filePath, {
 		highWaterMark: STREAM_CHUNK_BYTES,
@@ -648,7 +652,8 @@ async function downloadFromUrl(
  * primary URL (falling back to fallbackUrl) while computing the sha256 and
  * the signature hash over the streamed bytes. The file is downloaded to
  * `<destPath>.part` and only renamed into place after the checksum matches
- * and a trusted key's signature verifies.
+ * and a trusted key's signature verifies. A signature that does not hold on
+ * one mirror does not block the next mirror's.
  */
 export async function ensureImageAt(
 	entry: HexOSImageEntry,
@@ -667,60 +672,89 @@ export async function ensureImageAt(
 	let unreachable: Error | undefined;
 	let unverifiable: SignatureVerificationError | undefined;
 	let unavailable: SignatureUnavailableError | undefined;
-	for (const url of imageUrls(entry)) {
-		let downloaded = false;
-		try {
-			const candidates = await fetchCandidates(
-				signatureLocations([url], entry),
-				policy,
-				abortSignal,
-			);
-			const check = await startSignatureCheck(candidates);
-			const digest = await downloadFromUrl(
-				url,
-				entry,
-				partPath,
-				onProgress,
-				abortSignal,
-				check.sink,
-			);
-			downloaded = true;
-			if (digest !== entry.sha256.toLowerCase()) {
-				throw new ChecksumMismatchError(entry.sha256, digest);
+	let rejected: SignatureVerificationError | undefined;
+	// Once a download matches the manifest's sha256, every mirror's copy is
+	// those same bytes, so the next mirror's signature is checked against
+	// the .part on disk instead of downloading the image again.
+	let partMatches = false;
+	let placed = false;
+	try {
+		for (const url of imageUrls(entry)) {
+			let checked = false;
+			let verified = false;
+			try {
+				const candidates = await fetchCandidates(
+					signatureLocations([url], entry),
+					policy,
+					abortSignal,
+				);
+				const check = await startSignatureCheck(candidates);
+				const digest = partMatches
+					? await hashFile(
+							partPath,
+							entry.size,
+							onProgress,
+							abortSignal,
+							check.sink,
+						)
+					: await downloadFromUrl(
+							url,
+							entry,
+							partPath,
+							onProgress,
+							abortSignal,
+							check.sink,
+						);
+				checked = true;
+				if (digest !== entry.sha256.toLowerCase()) {
+					throw new ChecksumMismatchError(entry.sha256, digest);
+				}
+				partMatches = true;
+				const { source, failure } = await check.result();
+				if (source === undefined) {
+					throw new SignatureVerificationError(failure ?? 'not verified');
+				}
+				verified = true;
+				await fs.rename(partPath, destPath);
+				placed = true;
+				await fs
+					.writeFile(destPath + SIGNATURE_SUFFIX, source)
+					.catch(() => undefined);
+				return { path: destPath, alreadyExisted: false };
+			} catch (error: any) {
+				// Don't retry on user cancellation or a download that arrived
+				// intact and failed its checksum: that is a bad publish, not a
+				// flaky mirror, nor on a local failure after the signature held.
+				// A signature that does not hold over the image is
+				// that mirror's fault (a stale .gpg, say), so the next mirror's
+				// signature still gets its turn; it is checked against the same
+				// bytes and only counts if a trusted key made it over them.
+				if (
+					abortSignal?.aborted ||
+					verified ||
+					error instanceof ChecksumMismatchError
+				) {
+					throw error;
+				}
+				if (checked && error instanceof SignatureVerificationError) {
+					rejected = error;
+				} else if (error instanceof SignatureVerificationError) {
+					unverifiable = error;
+				} else if (error instanceof SignatureUnavailableError) {
+					unavailable = error;
+				} else {
+					unreachable = error;
+				}
 			}
-			const { source, failure } = await check.result();
-			if (source === undefined) {
-				throw new SignatureVerificationError(failure ?? 'not verified');
-			}
-			await fs.rename(partPath, destPath);
-			await fs
-				.writeFile(destPath + SIGNATURE_SUFFIX, source)
-				.catch(() => undefined);
-			return { path: destPath, alreadyExisted: false };
-		} catch (error: any) {
+		}
+	} finally {
+		if (!placed) {
 			await fs.unlink(partPath).catch(() => undefined);
-			// Don't retry on user cancellation or a download that arrived
-			// intact and still failed its checksum or signature: that is a
-			// bad publish, not a flaky mirror. A mirror whose signature is
-			// missing or unusable is skipped like any other broken mirror.
-			if (
-				abortSignal?.aborted ||
-				error instanceof ChecksumMismatchError ||
-				(downloaded && error instanceof SignatureVerificationError)
-			) {
-				throw error;
-			}
-			if (error instanceof SignatureVerificationError) {
-				unverifiable = error;
-			} else if (error instanceof SignatureUnavailableError) {
-				unavailable = error;
-			} else {
-				unreachable = error;
-			}
 		}
 	}
 	throw (
 		unreachable ??
+		rejected ??
 		unverifiable ??
 		unavailable ??
 		new Error('No download URLs available')

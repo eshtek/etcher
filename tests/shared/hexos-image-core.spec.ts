@@ -331,6 +331,92 @@ describe('Shared: HexOS image core', function () {
 			expect(await exists(dest)).to.equal(true);
 		});
 
+		it("uses the fallback's signature when the primary's is stale", async function () {
+			const fallbackUrl = `${secureBase}/mirror/${ISO_NAME}`;
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/mirror/${ISO_NAME}`, { body: iso });
+			routes.set(`/mirror/${ISO_NAME}.gpg`, { body: goodSignature });
+			// A trusted key's signature over other bytes is only found out after
+			// the download, and the fallback's is then checked against the same
+			// bytes. A stranger's is dropped before any download.
+			for (const [stale, downloadedFrom] of [
+				[await sign(otherIso, signer, 'binary'), `/${ISO_NAME}`],
+				[await sign(iso, stranger, 'binary'), `/mirror/${ISO_NAME}`],
+			] as const) {
+				routes.set(`/${ISO_NAME}.gpg`, { body: stale });
+				hits.length = 0;
+				const result = await ensure(entryFor(iso, { fallbackUrl }));
+				expect(result.alreadyExisted).to.equal(false);
+				expect((await fs.readFile(dest)).equals(iso)).to.equal(true);
+				expect(
+					(await fs.readFile(`${dest}.gpg`)).equals(goodSignature),
+				).to.equal(true);
+				expect(hits.filter((hit) => !hit.endsWith('.gpg'))).to.deep.equal([
+					downloadedFrom,
+				]);
+				expect(await exists(`${dest}.part`)).to.equal(false);
+				await fs.rm(dest);
+				await fs.rm(`${dest}.gpg`);
+			}
+		});
+
+		it('refuses when no mirror has a signature that holds', async function () {
+			const fallbackUrl = `${secureBase}/mirror/${ISO_NAME}`;
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/mirror/${ISO_NAME}`, { body: iso });
+			routes.set(`/${ISO_NAME}.gpg`, {
+				body: await sign(otherIso, signer, 'binary'),
+			});
+			for (const fallback of [
+				undefined,
+				await sign(otherIso, signer, 'binary'),
+				await sign(iso, stranger, 'binary'),
+				'<html>oops</html>',
+			]) {
+				if (fallback === undefined) {
+					routes.delete(`/mirror/${ISO_NAME}.gpg`);
+				} else {
+					routes.set(`/mirror/${ISO_NAME}.gpg`, { body: fallback });
+				}
+				const error = await failureOf(ensure(entryFor(iso, { fallbackUrl })));
+				expect(error).to.be.instanceOf(SignatureVerificationError);
+				expect(hits).to.not.include(`/mirror/${ISO_NAME}`);
+				await expectNothingKept();
+			}
+		});
+
+		it('reports a local failure after the signature holds as itself', async function () {
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/${ISO_NAME}.gpg`, { body: goodSignature });
+			routes.set(`/mirror/${ISO_NAME}.gpg`, { body: goodSignature });
+			await fs.mkdir(path.join(dest, 'occupied'), { recursive: true });
+			const error = await failureOf(
+				ensure(
+					entryFor(iso, { fallbackUrl: `${secureBase}/mirror/${ISO_NAME}` }),
+				),
+			);
+			expect(error).to.not.be.instanceOf(SignatureVerificationError);
+			expect((error as NodeJS.ErrnoException).code).to.be.a('string');
+			expect(await exists(`${dest}.part`)).to.equal(false);
+			expect(hits).to.not.include(`/mirror/${ISO_NAME}.gpg`);
+		});
+
+		it('stays retryable when the fallback signature is unreachable', async function () {
+			routes.set(`/${ISO_NAME}`, { body: iso });
+			routes.set(`/${ISO_NAME}.gpg`, {
+				body: await sign(otherIso, signer, 'binary'),
+			});
+			routes.set(`/mirror/${ISO_NAME}.gpg`, { status: 503 });
+			const error = await failureOf(
+				ensure(
+					entryFor(iso, { fallbackUrl: `${secureBase}/mirror/${ISO_NAME}` }),
+				),
+			);
+			expect(error).to.not.be.instanceOf(SignatureVerificationError);
+			expect(error.message).to.match(/HTTP 503/);
+			await expectNothingKept();
+		});
+
 		it('lets signatureUrl add a location', async function () {
 			routes.set(`/${ISO_NAME}`, { body: iso });
 			routes.set('/signatures/test.sig', { body: goodSignature });

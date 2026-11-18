@@ -26,7 +26,10 @@ Etcher flows (flash from file, flash from URL, clone drive) remain available.
    over the received bytes. The file is written as `<name>.part` and renamed
    only after the checksum matches the manifest and the signature verifies
    (see [Image signatures](#image-signatures)). If the primary URL fails, the
-   manifest's `fallbackUrl` is tried, with the signature beside it. The
+   manifest's `fallbackUrl` is tried, with the signature beside it. When the
+   primary's ISO matches the checksum but its signature does not hold (a
+   stale `.gpg`, say), the fallback's signature is checked against the same
+   bytes before anything is refused, so the ISO is not downloaded twice. The
    signature is saved next to the ISO as `<name>.gpg`. A copy that already
    exists in Downloads goes through the same two checks, and the download is
    skipped only if it passes both.
